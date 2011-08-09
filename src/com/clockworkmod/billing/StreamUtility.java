@@ -32,7 +32,7 @@ class StreamUtility {
 		return total;
 	}
 	
-	public String downloadUriAsString(String uri) throws IOException {
+	public static String downloadUriAsString(String uri) throws IOException {
 	    AndroidHttpClient client = AndroidHttpClient.newInstance("Android");
 	    try {
 	        HttpGet get = new HttpGet(uri);
@@ -44,7 +44,7 @@ class StreamUtility {
 	    }
 	}
 
-    public JSONObject downloadUriAsJSONObject(String uri) throws IOException, JSONException {
+    public static JSONObject downloadUriAsJSONObject(String uri) throws IOException, JSONException {
         return new JSONObject(downloadUriAsString(uri));
     }
 
