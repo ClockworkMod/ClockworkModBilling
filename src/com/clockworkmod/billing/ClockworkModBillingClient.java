@@ -20,6 +20,7 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.IntentSender;
@@ -28,6 +29,8 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
+import android.widget.EditText;
+import android.widget.LinearLayout;
 
 import com.android.vending.billing.Consts;
 import com.android.vending.billing.IMarketBillingService;
@@ -41,11 +44,12 @@ public class ClockworkModBillingClient {
     static final String API_URL = BASE_URL + "/api/v1";
     static final String INAPP_REQUEST_URL = API_URL + "/request/inapp/%s/%s?buyer_id=%s&custom_payload=%s&sandbox=%s";
     static final String INAPP_NOTIFY_URL = API_URL + "/notify/inapp/%s";
+    static final String REDEEM_NOTIFY_URL = API_URL + "/notify/redeem/%s";
 
     static ClockworkModBillingClient mInstance;
     Context mContext;
     String mSellerId;
-    
+
     private ClockworkModBillingClient(Context context, final String sellerId, boolean sandbox) {
         mContext = context.getApplicationContext();
         mSandbox = sandbox;
@@ -68,7 +72,7 @@ public class ClockworkModBillingClient {
     
     private static Object mPayPalLock = new Object();
     
-    private void beginPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
+    public void beginPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
         final String sellerId = payload.getString("seller_id");
         final String sandboxEmail = payload.getString("paypal_sandbox_email");
         final double price = payload.getDouble("product_price");
@@ -194,11 +198,11 @@ public class ClockworkModBillingClient {
         });
     }
 
-    private void beginAndroidPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
-        final String purchaseRequestId = payload.getString("purchase_request_id");
+    public void beginAndroidPurchase(final Context context, final String productId, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
+        final String purchaseRequestId = payload.optString("purchase_request_id", null);
         
         new Runnable() {
-            String productId = payload.getString("product_id");
+            String mProductId = payload.optString("product_id", null);
             public void run() {
                 final Runnable purchaseFlow = new Runnable() {
                     @Override
@@ -218,53 +222,44 @@ public class ClockworkModBillingClient {
                                     if (Consts.ResponseCode.valueOf(result.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
                                         throw new Exception();
                                     request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_REQUEST_PURCHASE);
-                                    request.putString(Consts.BILLING_REQUEST_ITEM_ID, productId);
+                                    request.putString(Consts.BILLING_REQUEST_ITEM_ID, mProductId);
                                     request.putString(Consts.BILLING_REQUEST_DEVELOPER_PAYLOAD, purchaseRequestId);
                                     Bundle response = s.sendBillingRequest(request);
                                     if (Consts.ResponseCode.valueOf(response.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
                                         throw new Exception();
                                     PendingIntent pi = response.getParcelable(Consts.BILLING_RESPONSE_PURCHASE_INTENT);
-                                    Method m = null;
-                                    try {
-                                        m = context.getClass().getMethod("startIntentSender", IntentSender.class, Intent.class, int.class, int.class, int.class);
-                                    }
-                                    catch (Exception ex) {
-                                    }
-                                    if (m != null)
-                                        m.invoke(context, pi.getIntentSender(), null, 0, 0, 0);
-                                    else
-                                        pi.send(context, 0, new Intent());
-                                    
-                                    final ServiceConnection sc = this;
+                                    context.startIntentSender(pi.getIntentSender(), null, 0, 0, 0);
+                                    context.unbindService(this);
                                     
                                     BroadcastReceiver receiver = new BroadcastReceiver() {
-                                        String mNotifyId = null;
                                         @Override
                                         public void onReceive(Context context, Intent intent) {
                                             try {
-                                                if (BillingReceiver.IN_APP_NOTIFY.equals(intent.getAction())) {
-                                                    mNotifyId = intent.getStringExtra(Consts.NOTIFICATION_ID);
-                                                    Bundle request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_GET_PURCHASE_INFORMATION);
-                                                    request.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, new String[] { mNotifyId });
-                                                    s.sendBillingRequest(request);
-                                                }
-                                                else if (BillingReceiver.PURCHASE_STATE_CHANGED.equals(intent.getAction())) {
-                                                    if (mNotifyId == null)
-                                                        return;
-                                                    
-                                                    context.unbindService(sc);
-                                                }
+                                                context.unregisterReceiver(this);
                                             }
                                             catch (Exception ex) {
-                                                ex.printStackTrace();
-                                                showAlertDialog(context, "There was an error processing your request. Please try again later!");
                                             }
+
+                                            PurchaseResult result;
+                                            if (BillingReceiver.CANCELLED.equals(intent.getAction())) {
+                                                result = PurchaseResult.CANCELLED;
+                                            }
+                                            else if (BillingReceiver.SUCCEEDED.equals(intent.getAction())) {
+                                                result = PurchaseResult.SUCCEEDED;
+                                            }
+                                            else {
+                                                result = PurchaseResult.FAILED;
+                                            }
+                                            System.out.println("received");
+                                            if (callback != null)
+                                                callback.onFinished(result);
                                         }
                                     };
                                     
                                     IntentFilter filter = new IntentFilter();
-                                    filter.addAction(BillingReceiver.IN_APP_NOTIFY);
-                                    filter.addAction(BillingReceiver.PURCHASE_STATE_CHANGED);
+                                    filter.addAction(BillingReceiver.SUCCEEDED);
+                                    filter.addAction(BillingReceiver.CANCELLED);
+                                    filter.addAction(BillingReceiver.FAILED);
                                     
                                     context.registerReceiver(receiver, filter);
                                 }
@@ -279,6 +274,8 @@ public class ClockworkModBillingClient {
 
                 if (!mSandbox) {
                     BillingService.mSandboxPurchaseRequestId = null;
+                    BillingService.mSandboxProductId = null;
+                    BillingService.mSandboxBuyerId = null;
                     purchaseFlow.run();
                     return;
                 }
@@ -290,7 +287,9 @@ public class ClockworkModBillingClient {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         BillingService.mSandboxPurchaseRequestId = purchaseRequestId;
-                        productId = results[which];
+                        BillingService.mSandboxProductId = productId;
+                        BillingService.mSandboxBuyerId = buyerId;
+                        mProductId = results[which];
                         purchaseFlow.run();
                     }
                 });
@@ -299,9 +298,91 @@ public class ClockworkModBillingClient {
         }.run();
     }
     
-    private void showPaymentOptions(final Context context, final PurchaseCallback callback, final JSONObject payload) {
+    public void beginRedeemCode(final Context context, final String productId, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
+        final String purchaseRequestId = payload.optString("purchase_request_id", null);
+        final String sellerId = payload.getString("seller_id");
+        final EditText edit = new EditText(context);
+        edit.setHint("1234abcd");
         AlertDialog.Builder builder = new Builder(context);
-        builder.setItems(new String[] { "PayPal", "Android Market" }, new DialogInterface.OnClickListener() {
+        builder.setMessage("Enter Redeem Code");
+        builder.setView(edit);
+        builder.setPositiveButton(android.R.string.ok, new OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                ProgressDialog dlg = new ProgressDialog(context);
+                dlg.setMessage("Redeeming...");
+                final String code = edit.getText().toString();
+                ThreadingRunnable.background(new ThreadingRunnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            HttpPost post = new HttpPost(String.format(REDEEM_NOTIFY_URL, sellerId));
+                            ArrayList<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
+                            params.add(new BasicNameValuePair("product_id", productId));
+                            params.add(new BasicNameValuePair("purchase_request_id", purchaseRequestId));
+                            params.add(new BasicNameValuePair("code", code));
+                            params.add(new BasicNameValuePair("sandbox", String.valueOf(mSandbox)));
+                            post.setEntity(new UrlEncodedFormEntity(params));
+                            final JSONObject redeemResult = StreamUtility.downloadUriAsJSONObject(post);
+                            if (redeemResult.optBoolean("success", false)) {
+                                foreground(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        callback.onFinished(PurchaseResult.SUCCEEDED);
+                                    }
+                                });
+                                return;
+                            }
+
+                            if (!redeemResult.optBoolean("is_redeemed", false)) {
+                                throw new Exception();
+                            }
+                            
+                            foreground(new Runnable() {
+                                @Override
+                                public void run() {
+                                    AlertDialog.Builder builder = new Builder(context);
+                                    builder.setMessage("This code has already been redeemed.");
+                                    builder.setPositiveButton(android.R.string.ok, new OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            if (callback != null)
+                                                callback.onFinished(PurchaseResult.FAILED);
+                                        }
+                                    });
+                                    builder.create().show();
+                                    builder.setCancelable(false);
+                                }
+                            });
+                        }
+                        catch (Exception ex) {
+                            foreground(new Runnable() {
+                                @Override
+                                public void run() {
+                                    AlertDialog.Builder builder = new Builder(context);
+                                    builder.setMessage("Invalid redeem code.");
+                                    builder.setPositiveButton(android.R.string.ok, new OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            if (callback != null)
+                                                callback.onFinished(PurchaseResult.FAILED);
+                                        }
+                                    });
+                                    builder.create().show();
+                                    builder.setCancelable(false);
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+        });
+        builder.create().show();
+    }
+
+    private void showPaymentOptions(final Context context, final String productId, final String buyerId, final PurchaseCallback callback, final JSONObject payload) {
+        AlertDialog.Builder builder = new Builder(context);
+        builder.setItems(new String[] { "PayPal", "Android Market", "Redeem Code" }, new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 try {
@@ -309,7 +390,10 @@ public class ClockworkModBillingClient {
                         beginPayPalPurchase(context, callback, payload);
                     }
                     else if (which == 1) {
-                        beginAndroidPurchase(context, callback, payload);
+                        beginAndroidPurchase(context, productId, buyerId, callback, payload);
+                    }
+                    else if (which == 2) {
+                        beginRedeemCode(context, productId, buyerId, callback, payload);
                     }
                 }
                 catch (Exception ex) {
@@ -328,10 +412,32 @@ public class ClockworkModBillingClient {
             //    throw new Exception("ClockworkModBillingClient has already been initialized for a different environment.");
             return mInstance;
         }
-        return mInstance = new ClockworkModBillingClient(context, sellerId, sandbox);
+        mInstance = new ClockworkModBillingClient(context, sellerId, sandbox);
+        try {
+            if (!sandbox) {
+                mInstance.refreshMarketPurchases();
+            }
+        }
+        catch (Exception ex) {
+        }
+        return mInstance;
     }
+    
+    public void refreshMarketPurchases() {
+        Intent i = new Intent(BillingService.REFRESH_MARKET);
+        i.setClass(mContext, BillingService.class);
+        mContext.startService(i);
+    }
+    
+    public static final int TYPE_PAYPAL = 0;
+    public static final int TYPE_MARKET = 1;
+    public static final int TYPE_REDEEM = 2;
 
     public void startPurchase(final Context context, final String productId, final String buyerId, final String customPayload, final PurchaseCallback callback) {
+        startPurchase(context, productId, buyerId, customPayload, callback, -1);
+    }
+
+    public void startPurchase(final Context context, final String productId, final String buyerId, final String customPayload, final PurchaseCallback callback, final int type) {
         final ProgressDialog dlg = new ProgressDialog(context);
         dlg.setMessage("Preparing order...");
         dlg.show();
@@ -346,12 +452,41 @@ public class ClockworkModBillingClient {
                         public void run() {
                             dlg.dismiss();
                             if (payload.optBoolean("purchased", false)) {
-                                showAlertDialog(context, "This product has already been purchased.");
-                                if (callback != null)
-                                    callback.onFinished(PurchaseResult.FAILED);
-                                return;
+                                if (!mSandbox || type != TYPE_MARKET) {
+                                    AlertDialog.Builder builder = new Builder(context);
+                                    builder.setMessage("This product has already been purchased.");
+                                    builder.setPositiveButton(android.R.string.ok, new OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            if (callback != null)
+                                                callback.onFinished(PurchaseResult.FAILED);
+                                        }
+                                    });
+                                    builder.create().show();
+                                    builder.setCancelable(false);
+                                    return;
+                                }
                             }
-                            showPaymentOptions(context, callback, payload);
+                            try {
+                                switch (type) {
+                                case 0:
+                                    beginPayPalPurchase(context, callback, payload);
+                                    break;
+                                case 1:
+                                    beginAndroidPurchase(context, productId, buyerId, callback, payload);
+                                    break;
+                                case 2:
+                                    beginRedeemCode(context, productId, buyerId, callback, payload);
+                                    break;
+                                default:
+                                    showPaymentOptions(context, productId, buyerId, callback, payload);
+                                    break;
+                                }
+                            }
+                            catch (Exception ex) {
+                                ex.printStackTrace();
+                                showAlertDialog(context, "There was an error processing your request. Please try again later!");
+                            }
                         }
                     });
                 }
