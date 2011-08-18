@@ -1,7 +1,5 @@
 package com.clockworkmod.billing;
 
-import java.io.IOException;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -23,14 +21,11 @@ import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.IntentSender;
 import android.content.ServiceConnection;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.util.Log;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 
 import com.android.vending.billing.Consts;
 import com.android.vending.billing.IMarketBillingService;
@@ -40,9 +35,9 @@ import com.paypal.android.MEP.PayPalInvoiceItem;
 import com.paypal.android.MEP.PayPalPayment;
 
 public class ClockworkModBillingClient {
-    static final String BASE_URL = "https://clockworkbilling.appspot.com";
+    static final String BASE_URL = "https://2.clockworkbilling.appspot.com";
     static final String API_URL = BASE_URL + "/api/v1";
-    static final String INAPP_REQUEST_URL = API_URL + "/request/inapp/%s/%s?buyer_id=%s&custom_payload=%s&sandbox=%s";
+    static final String ORDER_URL = API_URL + "/order/%s/%s?buyer_id=%s&custom_payload=%s&sandbox=%s";
     static final String INAPP_NOTIFY_URL = API_URL + "/notify/inapp/%s";
     static final String REDEEM_NOTIFY_URL = API_URL + "/notify/redeem/%s";
 
@@ -71,7 +66,7 @@ public class ClockworkModBillingClient {
     }
     
     private static Object mPayPalLock = new Object();
-    
+
     public void beginPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
         final String sellerId = payload.getString("seller_id");
         final String sandboxEmail = payload.getString("paypal_sandbox_email");
@@ -441,7 +436,7 @@ public class ClockworkModBillingClient {
         final ProgressDialog dlg = new ProgressDialog(context);
         dlg.setMessage("Preparing order...");
         dlg.show();
-        final String url = String.format(INAPP_REQUEST_URL, mSellerId, productId, Uri.encode(buyerId), Uri.encode(customPayload), mSandbox);
+        final String url = String.format(ORDER_URL, mSellerId, productId, Uri.encode(buyerId), Uri.encode(customPayload), mSandbox);
         ThreadingRunnable.background(new ThreadingRunnable() {
             @Override
             public void run() {
