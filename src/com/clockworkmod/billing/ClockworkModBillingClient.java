@@ -35,7 +35,7 @@ import com.paypal.android.MEP.PayPalInvoiceItem;
 import com.paypal.android.MEP.PayPalPayment;
 
 public class ClockworkModBillingClient {
-    static final String BASE_URL = "https://2.clockworkbilling.appspot.com";
+    static final String BASE_URL = "https://clockworkbilling.appspot.com";
     static final String API_URL = BASE_URL + "/api/v1";
     static final String ORDER_URL = API_URL + "/order/%s/%s?buyer_id=%s&custom_payload=%s&sandbox=%s";
     static final String INAPP_NOTIFY_URL = API_URL + "/notify/inapp/%s";
