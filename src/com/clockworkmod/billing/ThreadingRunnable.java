@@ -3,7 +3,7 @@ package com.clockworkmod.billing;
 import android.os.Handler;
 
 public abstract class ThreadingRunnable {
-    static void background(final ThreadingRunnable runnable) {
+    public static void background(final ThreadingRunnable runnable) {
         new Thread() {
             public void run() {
                 runnable.run();

@@ -50,8 +50,6 @@ public class BillingService extends Service {
         post.setEntity(entity);
         String result = StreamUtility.downloadUriAsString(post);
         Log.i(LOGTAG, result);
-        Log.i(LOGTAG, signedData);
-        Log.i(LOGTAG, signature);
     }
 
     @Override
@@ -59,6 +57,8 @@ public class BillingService extends Service {
         String action = null;
         if (intent != null)
             action = intent.getAction();
+        if (action != null)
+            Log.i(LOGTAG, action);
         if (REFRESH_MARKET.equals(action)) {
             bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
                 @Override
@@ -87,6 +87,10 @@ public class BillingService extends Service {
 
             final String signedData = intent.getStringExtra(Consts.INAPP_SIGNED_DATA);
             final String signature = intent.getStringExtra(Consts.INAPP_SIGNATURE);
+            if (signedData != null)
+                Log.i(LOGTAG, signedData);
+            if (signature != null)
+                Log.i(LOGTAG, signature);
 
             bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
                 @Override
@@ -108,14 +112,19 @@ public class BillingService extends Service {
                                 ArrayList<String> notificationIds = new ArrayList<String>();
                                 for (int i = 0; i < orders.length(); i++) {
                                     JSONObject order = orders.getJSONObject(i);
+                                    String notificationId = order.optString("notificationId", null);
+                                    if (notificationId == null)
+                                        continue;
                                     notificationIds.add(order.getString("notificationId"));
                                 }
-                                String[] nids = new String[orders.length()];
-                                nids = notificationIds.toArray(nids);
                                 reportAndroidPurchase(BillingService.this, signedData, signature);
-                                Bundle bundle = BillingReceiver.makeRequestBundle(BillingService.this, Consts.METHOD_CONFIRM_NOTIFICATIONS);
-                                bundle.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, nids);
-                                s.sendBillingRequest(bundle);
+                                if (notificationIds.size() > 0) {
+                                    String[] nids = new String[notificationIds.size()];
+                                    nids = notificationIds.toArray(nids);
+                                    Bundle bundle = BillingReceiver.makeRequestBundle(BillingService.this, Consts.METHOD_CONFIRM_NOTIFICATIONS);
+                                    bundle.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, nids);
+                                    s.sendBillingRequest(bundle);
+                                }
                                 unbindService(sc);
                                 Intent intent = new Intent(BillingReceiver.SUCCEEDED);
                                 sendBroadcast(intent);
