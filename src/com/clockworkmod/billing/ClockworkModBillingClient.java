@@ -429,14 +429,21 @@ public class ClockworkModBillingClient {
     public static final int TYPE_REDEEM = 2;
 
     public void startPurchase(final Context context, final String productId, final String buyerId, final String customPayload, final PurchaseCallback callback) {
-        startPurchase(context, productId, buyerId, customPayload, callback, -1);
+        startPurchase(context, productId, buyerId, null, customPayload, callback, -1);
     }
 
-    public void startPurchase(final Context context, final String productId, final String buyerId, final String customPayload, final PurchaseCallback callback, final int type) {
+    public void startPurchase(final Context context, final String productId, final String buyerId, String buyerEmail, final String customPayload, final PurchaseCallback callback) {
+        startPurchase(context, productId, buyerId, buyerEmail, customPayload, callback, -1);
+    }
+
+    public void startPurchase(final Context context, final String productId, final String buyerId, String buyerEmail, final String customPayload, final PurchaseCallback callback, final int type) {
         final ProgressDialog dlg = new ProgressDialog(context);
         dlg.setMessage("Preparing order...");
         dlg.show();
-        final String url = String.format(ORDER_URL, mSellerId, productId, Uri.encode(buyerId), Uri.encode(customPayload), mSandbox);
+        String _url = String.format(ORDER_URL, mSellerId, productId, Uri.encode(buyerId), Uri.encode(customPayload), mSandbox);
+        if (buyerEmail != null)
+            _url = _url + "&buyer_email=" + Uri.encode(buyerEmail);
+        final String url = _url;
         ThreadingRunnable.background(new ThreadingRunnable() {
             @Override
             public void run() {
