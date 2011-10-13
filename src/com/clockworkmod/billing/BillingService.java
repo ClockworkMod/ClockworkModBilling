@@ -1,6 +1,5 @@
 package com.clockworkmod.billing;
 
-import java.security.SecureRandom;
 import java.util.ArrayList;
 
 import org.apache.http.client.entity.UrlEncodedFormEntity;
@@ -14,9 +13,9 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences.Editor;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.os.RemoteException;
 import android.util.Log;
 
 import com.android.vending.billing.Consts;
@@ -70,8 +69,7 @@ public class BillingService extends Service {
                     try {
                         final IMarketBillingService s = IMarketBillingService.Stub.asInterface(service);
                         Bundle bundle = BillingReceiver.makeRequestBundle(BillingService.this, Consts.METHOD_RESTORE_TRANSACTIONS);
-                        SecureRandom random = new SecureRandom();
-                        bundle.putLong(Consts.BILLING_REQUEST_NONCE, random.nextLong());
+                        bundle.putLong(Consts.BILLING_REQUEST_NONCE, ClockworkModBillingClient.generateNonce(BillingService.this));
                         s.sendBillingRequest(bundle);
                     }
                     catch (Exception e) {
@@ -109,14 +107,23 @@ public class BillingService extends Service {
                                 JSONArray orders = purchase.getJSONArray("orders");
                                 if (orders.length() == 0)
                                     return;
+                                Editor orderData = ClockworkModBillingClient.getInstance().getOrderData().edit();
                                 ArrayList<String> notificationIds = new ArrayList<String>();
+                                JSONObject proof = new JSONObject();
+                                proof.put("signedData", signedData);
+                                proof.put("signature", signature);
+                                String proofString = proof.toString();
                                 for (int i = 0; i < orders.length(); i++) {
                                     JSONObject order = orders.getJSONObject(i);
+                                    String productId = order.optString("productId", null);
+                                    if (productId != null)
+                                        orderData.putString(productId, proofString);
+
                                     String notificationId = order.optString("notificationId", null);
-                                    if (notificationId == null)
-                                        continue;
-                                    notificationIds.add(order.getString("notificationId"));
+                                    if (notificationId != null)
+                                        notificationIds.add(order.getString("notificationId"));
                                 }
+                                orderData.commit();
                                 reportAndroidPurchase(BillingService.this, signedData, signature);
                                 if (notificationIds.size() > 0) {
                                     String[] nids = new String[notificationIds.size()];
@@ -151,8 +158,7 @@ public class BillingService extends Service {
                     try {
                         final IMarketBillingService s = IMarketBillingService.Stub.asInterface(service);
                         Bundle request = BillingReceiver.makeRequestBundle(BillingService.this, Consts.METHOD_GET_PURCHASE_INFORMATION);
-                        SecureRandom random = new SecureRandom();
-                        request.putLong(Consts.BILLING_REQUEST_NONCE, random.nextLong());
+                        request.putLong(Consts.BILLING_REQUEST_NONCE, System.currentTimeMillis());
                         request.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, new String[] { notifyId });
                         s.sendBillingRequest(request);
                     }
@@ -164,6 +170,7 @@ public class BillingService extends Service {
             long requestId = intent.getLongExtra(Consts.INAPP_REQUEST_ID, -1);
             int responseCodeIndex = intent.getIntExtra(Consts.INAPP_RESPONSE_CODE,
                     ResponseCode.RESULT_ERROR.ordinal());
+            Log.i(LOGTAG, "" + requestId + ": " + responseCodeIndex);
         } else {
         }
         

@@ -21,17 +21,11 @@ import java.util.UUID;
 import org.apache.http.client.ResponseHandler;
 
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.os.Bundle;
-import android.os.IBinder;
-import android.util.Log;
 
 import com.android.vending.billing.Consts;
-import com.android.vending.billing.Consts.ResponseCode;
-import com.android.vending.billing.IMarketBillingService;
 
 /**
  * This class implements the broadcast receiver for in-app billing. All asynchronous messages from

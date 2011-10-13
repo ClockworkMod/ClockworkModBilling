@@ -13,6 +13,9 @@ public abstract class ThreadingRunnable {
 
     public abstract void run();
     Handler mHandler = new Handler();
+    public Handler getHandler() {
+        return mHandler;
+    }
     
     public void foreground(Runnable runnable) {
         mHandler.post(runnable);
