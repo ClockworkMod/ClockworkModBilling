@@ -109,7 +109,7 @@ public class ClockworkModBillingClient {
             callback.onFinished(result);
     }
 
-    private void beginPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
+    private void startPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
         final String sellerId = payload.getString("seller_id");
         final String sandboxEmail = payload.getString("paypal_sandbox_email");
         final double price = payload.getDouble("product_price");
@@ -233,83 +233,24 @@ public class ClockworkModBillingClient {
         });
     }
     
-    public static void startUnmanagedInAppPurchase(final Context context, final String productId, final PurchaseCallback callback) {
+    public static void startUnmanagedInAppPurchase(final Context context, String productId, final PurchaseCallback callback) {
         startUnmanagedInAppPurchase(context, productId, null, callback);
     }
 
-    public static void startUnmanagedInAppPurchase(final Context context, final String productId, final String developerPayload, final PurchaseCallback callback) {
-        context.bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
-            @Override
-            public void onServiceDisconnected(ComponentName name) {
-            }
-            
-            @Override
-            public void onServiceConnected(ComponentName name, IBinder service) {
-                Bundle request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_CHECK_BILLING_SUPPORTED);
-                final IMarketBillingService s = IMarketBillingService.Stub.asInterface(service);
-                try {
-                    Bundle result = s.sendBillingRequest(request);
-                    if (Consts.ResponseCode.valueOf(result.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
-                        throw new Exception();
-                    request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_REQUEST_PURCHASE);
-                    request.putString(Consts.BILLING_REQUEST_ITEM_ID, productId);
-                    if (developerPayload != null)
-                        request.putString(Consts.BILLING_REQUEST_DEVELOPER_PAYLOAD, developerPayload);
-                    Bundle response = s.sendBillingRequest(request);
-                    if (Consts.ResponseCode.valueOf(response.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
-                        throw new Exception();
-                    PendingIntent pi = response.getParcelable(Consts.BILLING_RESPONSE_PURCHASE_INTENT);
-                    context.startIntentSender(pi.getIntentSender(), null, 0, 0, 0);
-                    context.unbindService(this);
-                    
-                    BroadcastReceiver receiver = new BroadcastReceiver() {
-                        @Override
-                        public void onReceive(Context context, Intent intent) {
-                            try {
-                                context.unregisterReceiver(this);
-                            }
-                            catch (Exception ex) {
-                            }
-
-                            PurchaseResult result;
-                            if (BillingReceiver.CANCELLED.equals(intent.getAction())) {
-                                result = PurchaseResult.CANCELLED;
-                            }
-                            else if (BillingReceiver.SUCCEEDED.equals(intent.getAction())) {
-                                result = PurchaseResult.SUCCEEDED;
-                            }
-                            else {
-                                result = PurchaseResult.FAILED;
-                            }
-                            invokeCallback(context, callback, result);
-                        }
-                    };
-                    
-                    IntentFilter filter = new IntentFilter();
-                    filter.addAction(BillingReceiver.SUCCEEDED);
-                    filter.addAction(BillingReceiver.CANCELLED);
-                    filter.addAction(BillingReceiver.FAILED);
-                    
-                    context.registerReceiver(receiver, filter);
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                    showAlertDialog(context, "There was an error processing your request. Please try again later!");
-                }
-            }
-        }, Context.BIND_AUTO_CREATE);
+    public static void startUnmanagedInAppPurchase(final Context context, String productId, String developerPayload, final PurchaseCallback callback) {
+        startInAppPurchaseInternal(context, productId, developerPayload, null, null, callback);
     }
 
-    private void beginAndroidPurchase(final Context context, final String productId, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
-        final String purchaseRequestId = payload.optString("purchase_request_id", null);
-        
+    private static void startInAppPurchaseInternal(final Context context, final String productId, final String developerPayload, final String buyerId, final String purchaseRequestId, final PurchaseCallback callback) {
         new Runnable() {
-            String mProductId = payload.optString("product_id", null);
+            String mProductId = productId;
+
+            @Override
             public void run() {
+                
                 final Runnable purchaseFlow = new Runnable() {
                     @Override
                     public void run() {
-
                         context.bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
                             @Override
                             public void onServiceDisconnected(ComponentName name) {
@@ -325,7 +266,8 @@ public class ClockworkModBillingClient {
                                         throw new Exception();
                                     request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_REQUEST_PURCHASE);
                                     request.putString(Consts.BILLING_REQUEST_ITEM_ID, mProductId);
-                                    request.putString(Consts.BILLING_REQUEST_DEVELOPER_PAYLOAD, purchaseRequestId);
+                                    if (developerPayload != null)
+                                        request.putString(Consts.BILLING_REQUEST_DEVELOPER_PAYLOAD, developerPayload);
                                     Bundle response = s.sendBillingRequest(request);
                                     if (Consts.ResponseCode.valueOf(response.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
                                         throw new Exception();
@@ -352,7 +294,7 @@ public class ClockworkModBillingClient {
                                             else {
                                                 result = PurchaseResult.FAILED;
                                             }
-                                            invokeCallback(callback, result);
+                                            invokeCallback(context, callback, result);
                                         }
                                     };
                                     
@@ -368,11 +310,12 @@ public class ClockworkModBillingClient {
                                     showAlertDialog(context, "There was an error processing your request. Please try again later!");
                                 }
                             }
-                        }, Context.BIND_AUTO_CREATE);
+                        }, Context.BIND_AUTO_CREATE);   
                     }
                 };
-
-                if (!mSandbox) {
+                
+                ClockworkModBillingClient client = ClockworkModBillingClient.getInstance();
+                if (client == null || !client.mSandbox) {
                     BillingService.mSandboxPurchaseRequestId = null;
                     BillingService.mSandboxProductId = null;
                     BillingService.mSandboxBuyerId = null;
@@ -396,12 +339,20 @@ public class ClockworkModBillingClient {
                 builder.create().show();
             }
         }.run();
+
+    }
+
+    private void startAndroidPurchase(final Context context, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
+        final String purchaseRequestId = payload.optString("purchase_request_id", null);
+        final String productId = payload.optString("product_id", null);
+        startInAppPurchaseInternal(context, productId, purchaseRequestId, buyerId, purchaseRequestId, callback);
     }
     
-    private void beginRedeemCode(final Context context, final String productId, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
+    private void startRedeemCode(final Context context, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
         final String purchaseRequestId = payload.optString("purchase_request_id", null);
         final String sellerId = payload.getString("seller_id");
         final EditText edit = new EditText(context);
+        final String productId = payload.optString("product_id", null);
         edit.setHint("1234abcd");
         AlertDialog.Builder builder = new Builder(context);
         builder.setMessage("Enter Redeem Code");
@@ -970,13 +921,13 @@ public class ClockworkModBillingClient {
                             }
                             try {
                                 if (type == PurchaseType.PAYPAL) {
-                                    beginPayPalPurchase(context, callback, payload);
+                                    startPayPalPurchase(context, callback, payload);
                                 }
                                 else if (type == PurchaseType.MARKET_INAPP) {
-                                    beginAndroidPurchase(context, productId, buyerId, callback, payload);
+                                    startAndroidPurchase(context, buyerId, callback, payload);
                                 }
                                 else if (type == PurchaseType.REDEEM) {
-                                    beginRedeemCode(context, productId, buyerId, callback, payload);
+                                    startRedeemCode(context, buyerId, callback, payload);
                                 }
                                 else {
                                     // dead code?
