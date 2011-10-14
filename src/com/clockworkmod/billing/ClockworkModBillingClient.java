@@ -594,7 +594,7 @@ public class ClockworkModBillingClient {
                     JSONObject order = orders.getJSONObject(i);
                     if (productId.equals(order.getString("productId")) && context.getPackageName().equals(order.optString("packageName", null))) {
                         Log.i(LOGTAG, "Cached in app billing success");
-                        result[0] = result[1] = CheckPurchaseResult.purchased(null);
+                        result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order));
                         return result;
                     }
                 }
@@ -638,7 +638,7 @@ public class ClockworkModBillingClient {
                 JSONObject order = orders.getJSONObject(i);
                 if (productId.equals(order.getString("product_id")) && mSellerId.equals(sellerId)) {
                     Log.i(LOGTAG, "Cached server billing success");
-                    result[0] = result[2] = CheckPurchaseResult.purchased(null);
+                    result[0] = result[2] = CheckPurchaseResult.purchased(new ClockworkOrder(order));
                     return result;
                 }
             }

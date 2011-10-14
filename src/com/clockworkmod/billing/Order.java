@@ -1,5 +1,10 @@
 package com.clockworkmod.billing;
 
-public interface Order {
+import org.json.JSONObject;
 
+public interface Order {
+    JSONObject getRawJSONObject();
+    String getDeveloperPayload();
+    String getProductId();
+    long getPurchaseTime();
 }
