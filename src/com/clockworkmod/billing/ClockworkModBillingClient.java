@@ -56,7 +56,6 @@ import android.util.Base64;
 import android.util.Log;
 import android.widget.EditText;
 
-import com.android.vending.billing.Consts;
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
@@ -84,7 +83,6 @@ public class ClockworkModBillingClient {
         mSellerId = sellerId;
         mClockworkPublicKey = clockworkPublicKey;
         mMarketPublicKey = marketPublicKey;
-        Consts.DEBUG = sandbox;
     }
     
     static private void showAlertDialog(Context context, String s)
@@ -563,17 +561,12 @@ public class ClockworkModBillingClient {
             return false;
         return maskedNonce == deviceNonce;
     }
-    
-    private enum CheckCachedPurchasesResult {
-        PURCHASED,
-        NOT_PURCHASED,
-        STALE
-    }
-    
+
     public static final long CACHE_DURATION_FOREVER = Long.MAX_VALUE;
 
-    private CheckCachedPurchasesResult[] checkCachedPurchases(Context context, String productId, String buyerId, long marketCacheDuration, long billingCacheDuration, SharedPreferences orderData) {
-        CheckCachedPurchasesResult[] result = new CheckCachedPurchasesResult[3];
+    private CheckPurchaseResult[] checkCachedPurchases(Context context, String productId, String buyerId, long marketCacheDuration, long billingCacheDuration, SharedPreferences orderData) {
+        Editor edit = orderData.edit();
+        CheckPurchaseResult[] result = new CheckPurchaseResult[3];
         // check the in app billing cache
         String proofString;
         if (!mSandbox) {
@@ -601,16 +594,18 @@ public class ClockworkModBillingClient {
                     JSONObject order = orders.getJSONObject(i);
                     if (productId.equals(order.getString("productId")) && context.getPackageName().equals(order.optString("packageName", null))) {
                         Log.i(LOGTAG, "Cached in app billing success");
-                        result[0] = CheckCachedPurchasesResult.PURCHASED;
-                        result[1] = CheckCachedPurchasesResult.PURCHASED;
+                        result[0] = result[1] = CheckPurchaseResult.purchased(null);
                         return result;
                     }
                 }
-                result[1] = CheckCachedPurchasesResult.NOT_PURCHASED;
+                result[1] = CheckPurchaseResult.notPurchased();
             }
             catch (Exception ex) {
-                ex.printStackTrace();
-                result[1] = CheckCachedPurchasesResult.STALE;
+                if (ex.getClass() != Exception.class)
+                    ex.printStackTrace();
+                result[1] = CheckPurchaseResult.stale();
+                edit.remove(productId);
+                edit.commit();
             }
         }
 
@@ -619,7 +614,6 @@ public class ClockworkModBillingClient {
             proofString = orderData.getString("server-purchases", null);
             if (proofString == null)
                 throw new Exception();
-
 
             JSONObject proof = new JSONObject(proofString);
             Log.i(LOGTAG, proof.toString(4));
@@ -644,34 +638,40 @@ public class ClockworkModBillingClient {
                 JSONObject order = orders.getJSONObject(i);
                 if (productId.equals(order.getString("product_id")) && mSellerId.equals(sellerId)) {
                     Log.i(LOGTAG, "Cached server billing success");
-                    result[0] = CheckCachedPurchasesResult.PURCHASED;
-                    result[2] = CheckCachedPurchasesResult.PURCHASED;
+                    result[0] = result[2] = CheckPurchaseResult.purchased(null);
                     return result;
                 }
             }
-            result[2] = CheckCachedPurchasesResult.NOT_PURCHASED;
+            result[2] = CheckPurchaseResult.notPurchased();
         }
         catch (Exception ex) {
-            ex.printStackTrace();
-            result[2] = CheckCachedPurchasesResult.STALE;
+            if (ex.getClass() != Exception.class)
+                ex.printStackTrace();
+            result[2] = CheckPurchaseResult.stale();
+            edit.remove("server-purchases");
+            edit.commit();
         }
 
-        if (result[1] == CheckCachedPurchasesResult.NOT_PURCHASED && result[2] == CheckCachedPurchasesResult.NOT_PURCHASED)
-            result[0] = CheckCachedPurchasesResult.NOT_PURCHASED;
+        if (result[1] == CheckPurchaseResult.notPurchased() && result[2] == CheckPurchaseResult.notPurchased())
+            result[0] = CheckPurchaseResult.notPurchased();
         else
-            result[0] = CheckCachedPurchasesResult.STALE;
+            result[0] = CheckPurchaseResult.stale();
         return result;
     }
     
     private class CheckPurchaseState {
         public boolean restoredMarket = false;
         public boolean refreshedServer = false;
-        public CheckPurchaseResult serverResult = CheckPurchaseResult.ERROR;
-        public CheckPurchaseResult marketResult = CheckPurchaseResult.ERROR;
+        public CheckPurchaseResult serverResult = CheckPurchaseResult.error();
+        public CheckPurchaseResult marketResult = CheckPurchaseResult.error();
         public boolean reportedPurchase = false;
     }
     
     private static final String LOGTAG = "ClockworkModBilling";
+
+    public CheckPurchaseResult checkPurchase(final Context context, final String productId, final String buyerId, final long cacheDuration, final CheckPurchaseCallback callback) {
+        return checkPurchase(context, productId, buyerId, cacheDuration, cacheDuration, callback);
+    }
 
     public CheckPurchaseResult checkPurchase(final Context context, final String productId, final String buyerId, final long marketCacheDuration, final long billingCacheDuration, final CheckPurchaseCallback callback) {
         final CheckPurchaseState state = new CheckPurchaseState();
@@ -680,18 +680,22 @@ public class ClockworkModBillingClient {
             @Override
             public void run() {
                 // report if both system of records have reported back, or one indicates success
-                if ((state.refreshedServer && state.restoredMarket) || state.marketResult == CheckPurchaseResult.PURCHASED || state.serverResult == CheckPurchaseResult.PURCHASED) {
+                if ((state.refreshedServer && state.restoredMarket) || state.marketResult.isPurchased() || state.serverResult.isPurchased()) {
                     // prevent double reporting
                     if (!state.reportedPurchase) {
                         state.reportedPurchase = true;
-                        if (callback != null) {
-                            if (state.marketResult == CheckPurchaseResult.PURCHASED || state.serverResult == CheckPurchaseResult.PURCHASED)
-                                callback.onFinished(CheckPurchaseResult.PURCHASED);
-                            else if (state.marketResult == CheckPurchaseResult.ERROR || state.serverResult == CheckPurchaseResult.ERROR)
-                                callback.onFinished(CheckPurchaseResult.ERROR);
-                            else
-                                callback.onFinished(CheckPurchaseResult.NOT_PURCHASED);
-                        }
+                        if (callback == null)
+                            return;
+                        if (state.marketResult.isPurchased())
+                            callback.onFinished(state.marketResult);
+                        else if (state.serverResult.isPurchased())
+                            callback.onFinished(state.serverResult);
+                        else if (state.marketResult.isError())
+                            callback.onFinished(state.marketResult);
+                        else if (state.serverResult.isError())
+                            callback.onFinished(state.serverResult);
+                        else
+                            callback.onFinished(CheckPurchaseResult.notPurchased());
                     }
                 }
             }
@@ -699,13 +703,13 @@ public class ClockworkModBillingClient {
 
         final SharedPreferences orderData = getOrderData();
         // first check the cache
-        CheckCachedPurchasesResult[] cachedResults = checkCachedPurchases(context, productId, buyerId, marketCacheDuration, billingCacheDuration, orderData);
-        CheckCachedPurchasesResult cachedResult = cachedResults[0];
+        CheckPurchaseResult[] cachedResults = checkCachedPurchases(context, productId, buyerId, marketCacheDuration, billingCacheDuration, orderData);
+        CheckPurchaseResult cachedResult = cachedResults[0];
         CheckPurchaseResult _syncResult = null;
-        if (cachedResult == CheckCachedPurchasesResult.PURCHASED)
-            _syncResult = CheckPurchaseResult.PURCHASED;
-        else if (cachedResult == CheckCachedPurchasesResult.NOT_PURCHASED)
-            _syncResult = CheckPurchaseResult.NOT_PURCHASED;
+        if (cachedResult.isPurchased())
+            _syncResult = cachedResult;
+        else if (cachedResult.isPurchased())
+            _syncResult = cachedResult;
         final CheckPurchaseResult syncResult = _syncResult;
         if (syncResult != null) {
             // only refresh the cache if it is stale
@@ -722,7 +726,7 @@ public class ClockworkModBillingClient {
         }
 
         // don't do a market payment refresh for the sandbox, as that only returns production data.
-        if (!mSandbox && cachedResults[1] == CheckCachedPurchasesResult.STALE) {
+        if (!mSandbox && cachedResults[1].isStale()) {
             BroadcastReceiver receiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
@@ -734,13 +738,18 @@ public class ClockworkModBillingClient {
 
                     state.refreshedServer = true;
                     if (BillingReceiver.CANCELLED.equals(intent.getAction())) {
-                        state.marketResult = CheckPurchaseResult.NOT_PURCHASED;
+                        state.marketResult = CheckPurchaseResult.notPurchased();
                     }
                     else if (BillingReceiver.SUCCEEDED.equals(intent.getAction())) {
-                        state.marketResult = CheckPurchaseResult.PURCHASED;
+                        CheckPurchaseResult[] cachedResults = checkCachedPurchases(context, productId, buyerId, CACHE_DURATION_FOREVER, 0, orderData);
+                        CheckPurchaseResult cachedResult = cachedResults[0];
+                        if (cachedResult.isPurchased())
+                            state.serverResult = cachedResult;
+                        else
+                            state.serverResult = CheckPurchaseResult.notPurchased();
                     }
                     else {
-                        state.marketResult = CheckPurchaseResult.NOT_PURCHASED;
+                        state.marketResult = CheckPurchaseResult.notPurchased();
                     }
                     Log.i(LOGTAG, "In app billing result: " + state.marketResult);
                     state.restoredMarket = true;
@@ -757,10 +766,10 @@ public class ClockworkModBillingClient {
         }
         else {
             state.restoredMarket = true;
-            state.marketResult = CheckPurchaseResult.NOT_PURCHASED;
+            state.marketResult = CheckPurchaseResult.notPurchased();
         }
 
-        if (cachedResults[2] == CheckCachedPurchasesResult.STALE) {
+        if (cachedResults[2].isStale()) {
             SharedPreferences settings = getCachedSettings();
             final String authToken = settings.getString("authToken", null);
             // refresh the server purchases
@@ -785,16 +794,16 @@ public class ClockworkModBillingClient {
                         editor.putString("server-purchases", purchases.toString());
                         editor.commit();
 
-                        CheckCachedPurchasesResult[] cachedResults = checkCachedPurchases(context, productId, buyerId, marketCacheDuration, billingCacheDuration, orderData);
-                        CheckCachedPurchasesResult cachedResult = cachedResults[0];
-                        if (cachedResult == CheckCachedPurchasesResult.PURCHASED)
-                            state.serverResult = CheckPurchaseResult.PURCHASED;
+                        CheckPurchaseResult[] cachedResults = checkCachedPurchases(context, productId, buyerId, 0, CACHE_DURATION_FOREVER, orderData);
+                        CheckPurchaseResult cachedResult = cachedResults[0];
+                        if (cachedResult.isPurchased())
+                            state.serverResult = cachedResult;
                         else
-                            state.serverResult = CheckPurchaseResult.NOT_PURCHASED;
+                            state.serverResult = CheckPurchaseResult.notPurchased();
                         Log.i(LOGTAG, "Server billing result: " + state.serverResult);
                     }
                     catch (Exception ex) {
-                        state.serverResult = CheckPurchaseResult.ERROR;
+                        state.serverResult = CheckPurchaseResult.error();
                     }
                     finally {
                         state.refreshedServer = true;
@@ -810,7 +819,7 @@ public class ClockworkModBillingClient {
         }
         else {
             state.refreshedServer = true;
-            state.serverResult = CheckPurchaseResult.NOT_PURCHASED;
+            state.serverResult = CheckPurchaseResult.notPurchased();
         }
 
         // force a timeout, and report an error
@@ -833,7 +842,7 @@ public class ClockworkModBillingClient {
             }
         });
         
-        return CheckPurchaseResult.PENDING;
+        return CheckPurchaseResult.pending();
     }
     
     public Intent getRecoverPurchasesActivityIntent(Context context, String productId, String buyerId) {

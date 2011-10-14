@@ -7,7 +7,7 @@ import android.content.Intent;
 
 import com.paypal.android.MEP.PayPalResultDelegate;
 
-public class ResultDelegate implements PayPalResultDelegate, Serializable {
+class ResultDelegate implements PayPalResultDelegate, Serializable {
     public static final String SUCCEEDED = ResultDelegate.class.getName() + "." + UUID.randomUUID().toString() + ".SUCCEEDED";
     public static final String FAILED = ResultDelegate.class.getName() + "." + UUID.randomUUID().toString() + ".FAILED";
     public static final String CANCELLED = ResultDelegate.class.getName() + "." + UUID.randomUUID().toString() + ".CANCELLED";

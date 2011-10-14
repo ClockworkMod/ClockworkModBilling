@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package com.android.vending.billing;
+package com.clockworkmod.billing;
 
 /**
  * This class holds global constants that are used throughout the application
  * to support in-app billing.
  */
-public class Consts {
+class Consts {
     // The response codes for a request, defined by Android Market.
     public enum ResponseCode {
         RESULT_OK,
@@ -97,6 +97,4 @@ public class Consts {
     public static final String METHOD_REQUEST_PURCHASE = "REQUEST_PURCHASE";
     public static final String METHOD_GET_PURCHASE_INFORMATION = "GET_PURCHASE_INFORMATION";
     public static final String METHOD_CONFIRM_NOTIFICATIONS = "CONFIRM_NOTIFICATIONS";
-
-    public static boolean DEBUG = true;
 }

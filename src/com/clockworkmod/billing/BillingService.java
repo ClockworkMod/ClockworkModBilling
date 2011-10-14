@@ -18,9 +18,8 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 
-import com.android.vending.billing.Consts;
-import com.android.vending.billing.Consts.ResponseCode;
 import com.android.vending.billing.IMarketBillingService;
+import com.clockworkmod.billing.Consts.ResponseCode;
 
 public class BillingService extends Service {
     static String mSandboxPurchaseRequestId = null;

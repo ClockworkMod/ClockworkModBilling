@@ -83,10 +83,10 @@ public class BillingActivity extends Activity {
                         ClockworkModBillingClient.getInstance().checkPurchase(BillingActivity.this, productId, buyerId, ClockworkModBillingClient.CACHE_DURATION_FOREVER, 0, new CheckPurchaseCallback() {
                             @Override
                             public void onFinished(CheckPurchaseResult result) {
-                                if (result == CheckPurchaseResult.PURCHASED) {
+                                if (result.isPurchased()) {
                                     setResult(BILLING_RESULT_PURCHASED);
                                 }
-                                else if (result == CheckPurchaseResult.NOT_PURCHASED) {
+                                else if (result.isNotPurchased()) {
                                     checkEmail(accountName.toLowerCase());
                                     //checkEmail("buyer_1279241028_per@hotmail.com");
                                     return;
@@ -158,10 +158,10 @@ public class BillingActivity extends Activity {
                                         @Override
                                         public void onFinished(CheckPurchaseResult result) {
                                             progress.cancel();
-                                            if (result == CheckPurchaseResult.PURCHASED) {
+                                            if (result.isPurchased()) {
                                                 setResult(BILLING_RESULT_PURCHASED);
                                             }
-                                            else if (result == CheckPurchaseResult.NOT_PURCHASED) {
+                                            else if (result.isNotPurchased()) {
                                                 setResult(BILLING_RESULT_NOT_PURCHASED);
                                             }
                                             else {
@@ -175,13 +175,15 @@ public class BillingActivity extends Activity {
                             
                             final AlertDialog d = builder.create();
                             d.show();
-                            d.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
-                            getHandler().postDelayed(new Runnable() {
-                                @Override
-                                public void run() {
-                                    d.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                                }
-                            }, 7000);
+                            if (wait) {
+                                d.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                                getHandler().postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        d.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                                    }
+                                }, 7000);
+                            }
                         }
                     });
                 }
