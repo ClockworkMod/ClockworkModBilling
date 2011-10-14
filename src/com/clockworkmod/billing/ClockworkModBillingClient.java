@@ -102,6 +102,13 @@ public class ClockworkModBillingClient {
             callback.onFinished(result);
     }
 
+    static private void invokeCallback(Context context, PurchaseCallback callback, PurchaseResult result) {
+        if (result == PurchaseResult.SUCCEEDED)
+            clearCachedPurchases(context);
+        if (callback != null)
+            callback.onFinished(result);
+    }
+
     private void beginPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
         final String sellerId = payload.getString("seller_id");
         final String sandboxEmail = payload.getString("paypal_sandbox_email");
@@ -226,7 +233,11 @@ public class ClockworkModBillingClient {
         });
     }
     
-    public static void startUnmanagedInAppPurchase(final Context context, final String productId) {
+    public static void startUnmanagedInAppPurchase(final Context context, final String productId, final PurchaseCallback callback) {
+        startUnmanagedInAppPurchase(context, productId, null, callback);
+    }
+
+    public static void startUnmanagedInAppPurchase(final Context context, final String productId, final String developerPayload, final PurchaseCallback callback) {
         context.bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
             @Override
             public void onServiceDisconnected(ComponentName name) {
@@ -242,6 +253,8 @@ public class ClockworkModBillingClient {
                         throw new Exception();
                     request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_REQUEST_PURCHASE);
                     request.putString(Consts.BILLING_REQUEST_ITEM_ID, productId);
+                    if (developerPayload != null)
+                        request.putString(Consts.BILLING_REQUEST_DEVELOPER_PAYLOAD, developerPayload);
                     Bundle response = s.sendBillingRequest(request);
                     if (Consts.ResponseCode.valueOf(response.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
                         throw new Exception();
@@ -268,7 +281,7 @@ public class ClockworkModBillingClient {
                             else {
                                 result = PurchaseResult.FAILED;
                             }
-                            System.out.println("received");
+                            invokeCallback(context, callback, result);
                         }
                     };
                     
@@ -339,7 +352,6 @@ public class ClockworkModBillingClient {
                                             else {
                                                 result = PurchaseResult.FAILED;
                                             }
-                                            System.out.println("received");
                                             invokeCallback(callback, result);
                                         }
                                     };
@@ -491,13 +503,20 @@ public class ClockworkModBillingClient {
     SharedPreferences getCachedSettings() {
         return mContext.getApplicationContext().getSharedPreferences("billing-settings", Context.MODE_PRIVATE);
     }
-    
+
+    static SharedPreferences getOrderData(Context context) {
+        return context.getSharedPreferences("order-data", Context.MODE_PRIVATE);
+    }
     SharedPreferences getOrderData() {
-        return mContext.getSharedPreferences("order-data", Context.MODE_PRIVATE);
+        return getOrderData(mContext);
     }
     
     public void clearCachedPurchases() {
-        SharedPreferences orderData = getOrderData();
+        clearCachedPurchases(mContext);
+    }
+    
+    public static void clearCachedPurchases(Context context) {
+        SharedPreferences orderData = getOrderData(context);
         Editor editor = orderData.edit();
         editor.clear();
         editor.commit();

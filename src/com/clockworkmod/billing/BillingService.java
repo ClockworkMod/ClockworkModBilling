@@ -133,6 +133,7 @@ public class BillingService extends Service {
                                 }
                                 unbindService(sc);
                                 Intent intent = new Intent(BillingReceiver.SUCCEEDED);
+                                intent.putExtra("orders", orders.toString());
                                 sendBroadcast(intent);
                             }
                             catch (Exception ex) {
