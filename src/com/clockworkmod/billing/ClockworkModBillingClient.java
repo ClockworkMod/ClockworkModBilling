@@ -596,6 +596,8 @@ public class ClockworkModBillingClient {
             if (proof.optBoolean("sandbox", true) != mSandbox)
                 throw new Exception();
             String sellerId = proof.optString("seller_id", null);
+            if (!mSellerId.equals(sellerId))
+                throw new Exception();
             long timestamp = proof.getLong("timestamp");
             // no need to check the nonce as done above,
             // checking the returned timestamp and buyer_id is good enough
@@ -606,7 +608,7 @@ public class ClockworkModBillingClient {
             JSONArray orders = proof.getJSONArray("orders");
             for (int i = 0; i < orders.length(); i++) {
                 JSONObject order = orders.getJSONObject(i);
-                if (productId.equals(order.getString("product_id")) && mSellerId.equals(sellerId)) {
+                if (productId.equals(order.getString("product_id"))) {
                     Log.i(LOGTAG, "Cached server billing success");
                     result[0] = result[2] = CheckPurchaseResult.purchased(new ClockworkOrder(order));
                     return result;
@@ -770,7 +772,7 @@ public class ClockworkModBillingClient {
                             state.serverResult = cachedResult;
                         else
                             state.serverResult = CheckPurchaseResult.notPurchased();
-                        Log.i(LOGTAG, "Server billing result: " + state.serverResult);
+                        Log.i(LOGTAG, "Server billing result: " + state.serverResult.mState);
                     }
                     catch (Exception ex) {
                         state.serverResult = CheckPurchaseResult.error();
