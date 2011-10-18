@@ -12,7 +12,7 @@ public abstract class ThreadingRunnable {
     }
 
     public abstract void run();
-    Handler mHandler = new Handler();
+    private Handler mHandler = new Handler();
     public Handler getHandler() {
         return mHandler;
     }

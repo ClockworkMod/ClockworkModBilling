@@ -680,8 +680,6 @@ public class ClockworkModBillingClient {
         CheckPurchaseResult _syncResult = null;
         if (cachedResult.isPurchased())
             _syncResult = cachedResult;
-        else if (cachedResult.isPurchased())
-            _syncResult = cachedResult;
         final CheckPurchaseResult syncResult = _syncResult;
         if (syncResult != null) {
             // only refresh the cache if it is stale

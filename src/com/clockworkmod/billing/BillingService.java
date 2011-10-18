@@ -15,6 +15,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences.Editor;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
 
@@ -50,13 +51,25 @@ public class BillingService extends Service {
         Log.i(LOGTAG, result);
     }
 
+    Handler mHandler = new Handler();
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = null;
         if (intent != null)
             action = intent.getAction();
-        if (action != null)
+        if (action != null) {
             Log.i(LOGTAG, action);
+        }
+
+        // after we have reported purchases, success or
+        // failure, schedule this service to kill itself
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                stopSelf();
+            }
+        }, 5 * 60 * 1000);
+        
         if (REFRESH_MARKET.equals(action)) {
             bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
                 @Override
@@ -131,7 +144,6 @@ public class BillingService extends Service {
                                     bundle.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, nids);
                                     s.sendBillingRequest(bundle);
                                 }
-                                unbindService(sc);
                                 Intent intent = new Intent(BillingReceiver.SUCCEEDED);
                                 intent.putExtra("orders", orders.toString());
                                 sendBroadcast(intent);
@@ -140,6 +152,11 @@ public class BillingService extends Service {
                                 ex.printStackTrace();
                                 Intent intent = new Intent(BillingReceiver.FAILED);
                                 sendBroadcast(intent);
+                            }
+                            try {
+                                unbindService(sc);
+                            }
+                            catch (Exception ex) {
                             }
                         }
                     });
