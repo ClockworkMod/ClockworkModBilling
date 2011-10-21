@@ -52,7 +52,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.telephony.TelephonyManager;
-import android.util.Base64;
 import android.util.Log;
 import android.widget.EditText;
 
