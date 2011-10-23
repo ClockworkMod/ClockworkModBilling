@@ -83,6 +83,8 @@ public class BillingService extends Service {
                         Bundle bundle = BillingReceiver.makeRequestBundle(BillingService.this, Consts.METHOD_RESTORE_TRANSACTIONS);
                         bundle.putLong(Consts.BILLING_REQUEST_NONCE, ClockworkModBillingClient.generateNonce(BillingService.this));
                         s.sendBillingRequest(bundle);
+                        
+                        unbindService(this);
                     }
                     catch (Exception e) {
                         e.printStackTrace();
@@ -178,6 +180,8 @@ public class BillingService extends Service {
                         request.putLong(Consts.BILLING_REQUEST_NONCE, System.currentTimeMillis());
                         request.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, new String[] { notifyId });
                         s.sendBillingRequest(request);
+                        
+                        unbindService(this);
                     }
                     catch (Exception e) {
                     }

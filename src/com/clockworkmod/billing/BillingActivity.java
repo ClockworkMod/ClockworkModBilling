@@ -85,16 +85,13 @@ public class BillingActivity extends Activity {
                             public void onFinished(CheckPurchaseResult result) {
                                 if (result.isPurchased()) {
                                     setResult(BILLING_RESULT_PURCHASED);
+                                    finish();
                                 }
-                                else if (result.isNotPurchased()) {
+                                else {
                                     checkEmail(accountName.toLowerCase());
                                     //checkEmail("buyer_1279241028_per@hotmail.com");
                                     return;
                                 }
-                                else {
-                                    setResult(BILLING_RESULT_FAILURE);
-                                }
-                                finish();
                             }
                         });
                     }
