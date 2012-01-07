@@ -65,6 +65,7 @@ public class ClockworkModBillingClient {
     static final String BASE_URL = "https://clockworkbilling.appspot.com";
     static final String API_URL = BASE_URL + "/api/v1";
     static final String ORDER_URL = API_URL + "/order/%s/%s?buyer_id=%s&custom_payload=%s&sandbox=%s";
+    static final String TRIAL_URL = API_URL + "/trial/%s/%s?buyer_id=%s&sandbox=%s&trial_increment=%d&trial_daily_increment=%d";
     static final String INAPP_NOTIFY_URL = API_URL + "/notify/inapp/%s";
     static final String REDEEM_NOTIFY_URL = API_URL + "/notify/redeem/%s";
     static final String PURCHASE_URL = API_URL + "/purchase/%s/%s?nonce=%s&sandbox=%s";
@@ -342,13 +343,13 @@ public class ClockworkModBillingClient {
     }
 
     private void startAndroidPurchase(final Context context, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
-        final String purchaseRequestId = payload.optString("purchase_request_id", null);
+        final String purchaseRequestId = payload.getString("purchase_request_id");
         final String productId = payload.optString("product_id", null);
         startInAppPurchaseInternal(context, productId, purchaseRequestId, buyerId, purchaseRequestId, callback);
     }
     
     private void startRedeemCode(final Context context, final String buyerId, final PurchaseCallback callback, final JSONObject payload) throws NoSuchAlgorithmException, JSONException {
-        final String purchaseRequestId = payload.optString("purchase_request_id", null);
+        final String purchaseRequestId = payload.getString("purchase_request_id");
         final String sellerId = payload.getString("seller_id");
         final EditText edit = new EditText(context);
         final String productId = payload.optString("product_id", null);
@@ -498,7 +499,7 @@ public class ClockworkModBillingClient {
         return nonce;
     }
     
-    static String getSafeDeviceId(Context context) {
+    public static String getSafeDeviceId(Context context) {
         TelephonyManager tm = (TelephonyManager)context.getSystemService(Context.TELEPHONY_SERVICE);
         String deviceId = tm.getDeviceId();
         if (deviceId == null) {
@@ -639,12 +640,44 @@ public class ClockworkModBillingClient {
     }
     
     private static final String LOGTAG = "ClockworkModBilling";
+    
+    public void updateTrial(final Context context, final String productId, String _buyerId, final int trialIncrement, final int trialDailyIncrement, final UpdateTrialCallback callback) {
+        final String buyerId = _buyerId == null ? getSafeDeviceId(context) : _buyerId;
+        final String url = String.format(TRIAL_URL, mSellerId, productId, buyerId, mSandbox, trialIncrement, trialDailyIncrement);
+        ThreadingRunnable.background(new ThreadingRunnable() {
+            @Override
+            public void run() {
+                try {
+                    final JSONObject result = StreamUtility.downloadUriAsJSONObject(url);
+                    if (!result.getBoolean("success"))
+                        throw new Exception();
+                    final JSONObject trial = result.getJSONObject("trial");
+                    foreground(new Runnable() {
+                        @Override
+                        public void run() {
+                            callback.onFinished(true, trial.optLong("trial_date", System.currentTimeMillis()), trial.optLong("trial_increment", 0), trial.optLong("trial_daily_increment", 0), trial.optLong("trial_daily_window", System.currentTimeMillis()));
+                        }
+                    });
+                }
+                catch (Exception ex) {
+                    ex.printStackTrace();
+                    foreground(new Runnable() {
+                        @Override
+                        public void run() {
+                            callback.onFinished(false, 0, 0, 0, 0);
+                        }
+                    });
+                }
+            }
+        });
+    }
 
     public CheckPurchaseResult checkPurchase(final Context context, final String productId, final String buyerId, final long cacheDuration, final CheckPurchaseCallback callback) {
         return checkPurchase(context, productId, buyerId, cacheDuration, cacheDuration, callback);
     }
 
-    public CheckPurchaseResult checkPurchase(final Context context, final String productId, final String buyerId, final long marketCacheDuration, final long billingCacheDuration, final CheckPurchaseCallback callback) {
+    public CheckPurchaseResult checkPurchase(final Context context, final String productId, String _buyerId, final long marketCacheDuration, final long billingCacheDuration, final CheckPurchaseCallback callback) {
+        final String buyerId = _buyerId == null ? getSafeDeviceId(context) : _buyerId;
         final CheckPurchaseState state = new CheckPurchaseState();
         final Handler handler = new Handler();
         final Runnable reportPurchase = new Runnable() {
@@ -790,6 +823,16 @@ public class ClockworkModBillingClient {
             state.refreshedServer = true;
             state.serverResult = CheckPurchaseResult.notPurchased();
         }
+        
+        if (state.refreshedServer && state.restoredMarket) {
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    reportPurchase.run();
+                }
+            });
+            return CheckPurchaseResult.notPurchased();
+        }
 
         // force a timeout, and report an error
         ThreadingRunnable.background(new ThreadingRunnable() {
@@ -882,7 +925,8 @@ public class ClockworkModBillingClient {
     }
     
     // should we move this into an activity?
-    private void startPurchaseInternal(final Context context, final String productId, final String buyerId, final String buyerEmail, final String customPayload, final PurchaseType type, final PurchaseCallback callback) {
+    private void startPurchaseInternal(final Context context, final String productId, String _buyerId, final String buyerEmail, final String customPayload, final PurchaseType type, final PurchaseCallback callback) {
+        final String buyerId = _buyerId == null ? getSafeDeviceId(context) : _buyerId;
         // everything is ready to go, initiate the purchase
         final ProgressDialog dlg = new ProgressDialog(context);
         dlg.setMessage("Preparing order...");
