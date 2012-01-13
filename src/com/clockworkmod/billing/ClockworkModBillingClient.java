@@ -57,6 +57,7 @@ import android.widget.EditText;
 
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
+import com.paypal.android.MEP.PayPalAdvancedPayment;
 import com.paypal.android.MEP.PayPalInvoiceData;
 import com.paypal.android.MEP.PayPalInvoiceItem;
 import com.paypal.android.MEP.PayPalPayment;
@@ -861,6 +862,7 @@ public class ClockworkModBillingClient {
         Intent intent = new Intent(context, BillingActivity.class);
         intent.putExtra("action", "recover");
         intent.putExtra("productId", productId);
+        buyerId = buyerId == null ? getSafeDeviceId(context) : buyerId;
         intent.putExtra("buyerId", buyerId);
         return intent;
     }
