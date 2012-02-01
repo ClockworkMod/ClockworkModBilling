@@ -13,6 +13,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.http.Header;
 import org.apache.http.HttpMessage;
@@ -57,7 +58,6 @@ import android.widget.EditText;
 
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
-import com.paypal.android.MEP.PayPalAdvancedPayment;
 import com.paypal.android.MEP.PayPalInvoiceData;
 import com.paypal.android.MEP.PayPalInvoiceItem;
 import com.paypal.android.MEP.PayPalPayment;
@@ -534,7 +534,41 @@ public class ClockworkModBillingClient {
     }
 
     public static final long CACHE_DURATION_FOREVER = Long.MAX_VALUE;
+    
+    public List<ClockworkOrder> getCachedClockworkPurchases(String buyerId) {
+        ArrayList<ClockworkOrder> ret = new ArrayList<ClockworkOrder>();
+        SharedPreferences orderData = getOrderData();
+        
+        try {
+            String proofString = orderData.getString("server-purchases", null);
+            if (proofString == null)
+                throw new Exception();
 
+            JSONObject proof = new JSONObject(proofString);
+            Log.i(LOGTAG, proof.toString(4));
+            String signedData = proof.getString("signed_data");
+            String signature = proof.getString("signature");
+            if (!checkSignature(mClockworkPublicKey, signedData, signature))
+                throw new Exception();
+
+            proof = new JSONObject(signedData);
+            if (proof.optBoolean("sandbox", true) != mSandbox)
+                throw new Exception();
+            String sellerId = proof.optString("seller_id", null);
+            if (!mSellerId.equals(sellerId))
+                throw new Exception();
+            if (!buyerId.equals(proof.getString("buyer_id")))
+                throw new Exception();
+            JSONArray orders = proof.getJSONArray("orders");
+            for (int i = 0; i < orders.length(); i++) {
+                JSONObject order = orders.getJSONObject(i);
+                ret.add(new ClockworkOrder(order));
+            }           }
+        catch (Exception ex) {
+        }
+        return ret;
+    }
+    
     private CheckPurchaseResult[] checkCachedPurchases(Context context, String productId, String buyerId, long marketCacheDuration, long billingCacheDuration, SharedPreferences orderData) {
         Editor edit = orderData.edit();
         CheckPurchaseResult[] result = new CheckPurchaseResult[3];
@@ -739,7 +773,7 @@ public class ClockworkModBillingClient {
                     catch (Exception ex) {
                     }
 
-                    state.refreshedServer = true;
+                    state.restoredMarket = true;
                     if (BillingReceiver.CANCELLED.equals(intent.getAction())) {
                         state.marketResult = CheckPurchaseResult.notPurchased();
                     }
@@ -747,15 +781,14 @@ public class ClockworkModBillingClient {
                         CheckPurchaseResult[] cachedResults = checkCachedPurchases(context, productId, buyerId, CACHE_DURATION_FOREVER, 0, orderData);
                         CheckPurchaseResult cachedResult = cachedResults[0];
                         if (cachedResult.isPurchased())
-                            state.serverResult = cachedResult;
+                            state.marketResult = cachedResult;
                         else
-                            state.serverResult = CheckPurchaseResult.notPurchased();
+                            state.marketResult = CheckPurchaseResult.notPurchased();
                     }
                     else {
                         state.marketResult = CheckPurchaseResult.notPurchased();
                     }
                     Log.i(LOGTAG, "In app billing result: " + state.marketResult);
-                    state.restoredMarket = true;
                     reportPurchase.run();
                 }
             };
