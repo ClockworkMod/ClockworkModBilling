@@ -35,6 +35,7 @@ public class BillingService extends Service {
     
     private static final String LOGTAG = "ClockworkBilling";
     static void reportAndroidPurchase(final Context context, final String signedData, final String signature) throws Exception {
+        Log.i(LOGTAG, "Reporting in app purchases...");
         HttpPost post = new HttpPost(String.format(ClockworkModBillingClient.INAPP_NOTIFY_URL, ClockworkModBillingClient.mInstance.mSellerId));
         ArrayList<BasicNameValuePair> pairs = new ArrayList<BasicNameValuePair>();
         pairs.add(new BasicNameValuePair("signed_data", signedData));
@@ -191,7 +192,7 @@ public class BillingService extends Service {
             long requestId = intent.getLongExtra(Consts.INAPP_REQUEST_ID, -1);
             int responseCodeIndex = intent.getIntExtra(Consts.INAPP_RESPONSE_CODE,
                     ResponseCode.RESULT_ERROR.ordinal());
-            Log.i(LOGTAG, "" + requestId + ": " + responseCodeIndex);
+            Log.i(LOGTAG, "Response Code: " + requestId + ": " + responseCodeIndex);
         } else {
         }
         

@@ -264,14 +264,14 @@ public class ClockworkModBillingClient {
                                 try {
                                     Bundle result = s.sendBillingRequest(request);
                                     if (Consts.ResponseCode.valueOf(result.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
-                                        throw new Exception();
+                                        throw new Exception("billing response not ok");
                                     request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_REQUEST_PURCHASE);
                                     request.putString(Consts.BILLING_REQUEST_ITEM_ID, mProductId);
                                     if (developerPayload != null)
                                         request.putString(Consts.BILLING_REQUEST_DEVELOPER_PAYLOAD, developerPayload);
                                     Bundle response = s.sendBillingRequest(request);
                                     if (Consts.ResponseCode.valueOf(response.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
-                                        throw new Exception();
+                                        throw new Exception("billing response not ok");
                                     PendingIntent pi = response.getParcelable(Consts.BILLING_RESPONSE_PURCHASE_INTENT);
                                     context.startIntentSender(pi.getIntentSender(), null, 0, 0, 0);
                                     context.unbindService(this);
@@ -393,7 +393,7 @@ public class ClockworkModBillingClient {
                             }
 
                             if (!redeemResult.optBoolean("is_redeemed", false)) {
-                                throw new Exception();
+                                throw new Exception("already redeemed");
                             }
                             
                             foreground(new Runnable() {
@@ -542,29 +542,31 @@ public class ClockworkModBillingClient {
         try {
             String proofString = orderData.getString("server-purchases", null);
             if (proofString == null)
-                throw new Exception();
+                throw new Exception("no proof string");
 
             JSONObject proof = new JSONObject(proofString);
             Log.i(LOGTAG, proof.toString(4));
             String signedData = proof.getString("signed_data");
             String signature = proof.getString("signature");
             if (!checkSignature(mClockworkPublicKey, signedData, signature))
-                throw new Exception();
+                throw new Exception("signature mismatch");
 
             proof = new JSONObject(signedData);
             if (proof.optBoolean("sandbox", true) != mSandbox)
-                throw new Exception();
+                throw new Exception("sandbox mismatch");
             String sellerId = proof.optString("seller_id", null);
             if (!mSellerId.equals(sellerId))
-                throw new Exception();
+                throw new Exception("seller_id mismatch");
             if (!buyerId.equals(proof.getString("buyer_id")))
-                throw new Exception();
+                throw new Exception("buyer_id mismatch");
             JSONArray orders = proof.getJSONArray("orders");
             for (int i = 0; i < orders.length(); i++) {
                 JSONObject order = orders.getJSONObject(i);
                 ret.add(new ClockworkOrder(order));
-            }           }
+            }
+        }
         catch (Exception ex) {
+            ex.printStackTrace();
         }
         return ret;
     }
@@ -579,13 +581,13 @@ public class ClockworkModBillingClient {
             try {
                 proofString = orderData.getString(productId, null);
                 if (proofString == null)
-                    throw new Exception();
+                    throw new Exception("no proof string");
                 JSONObject proof = new JSONObject(proofString);
                 Log.i(LOGTAG, proof.toString(4));
                 String signedData = proof.getString("signedData");
                 String signature = proof.getString("signature");
                 if (!checkSignature(mMarketPublicKey, signedData, signature))
-                    throw new Exception();
+                    throw new Exception("signature mismatch");
 
                 proof = new JSONObject(signedData);
                 // TODO: change this to long in the future. Earlier versions of the in app billing api would
@@ -593,7 +595,7 @@ public class ClockworkModBillingClient {
                 long nonce = proof.getLong("nonce");
                 // the nonce check also checks against the device id.
                 if (!checkNonce(context, nonce, marketCacheDuration))
-                    throw new Exception();
+                    throw new Exception("nonce failure");
                 JSONArray orders = proof.getJSONArray("orders");
                 for (int i = 0; i < orders.length(); i++) {
                     JSONObject order = orders.getJSONObject(i);
@@ -606,8 +608,7 @@ public class ClockworkModBillingClient {
                 result[1] = CheckPurchaseResult.notPurchased();
             }
             catch (Exception ex) {
-                if (ex.getClass() != Exception.class)
-                    ex.printStackTrace();
+                ex.printStackTrace();
                 result[1] = CheckPurchaseResult.stale();
                 edit.remove(productId);
                 edit.commit();
@@ -618,28 +619,28 @@ public class ClockworkModBillingClient {
         {
             proofString = orderData.getString("server-purchases", null);
             if (proofString == null)
-                throw new Exception();
+                throw new Exception("no proof string");
 
             JSONObject proof = new JSONObject(proofString);
             Log.i(LOGTAG, proof.toString(4));
             String signedData = proof.getString("signed_data");
             String signature = proof.getString("signature");
             if (!checkSignature(mClockworkPublicKey, signedData, signature))
-                throw new Exception();
+                throw new Exception("signature mismatch");
 
             proof = new JSONObject(signedData);
             if (proof.optBoolean("sandbox", true) != mSandbox)
-                throw new Exception();
+                throw new Exception("sandbox mismatch");
             String sellerId = proof.optString("seller_id", null);
             if (!mSellerId.equals(sellerId))
-                throw new Exception();
+                throw new Exception("seller_id mismatch");
             long timestamp = proof.getLong("timestamp");
             // no need to check the nonce as done above,
             // checking the returned timestamp and buyer_id is good enough
             if (billingCacheDuration != CACHE_DURATION_FOREVER && timestamp < System.currentTimeMillis() - billingCacheDuration)
-                throw new Exception();
+                throw new Exception("cache expired");
             if (!buyerId.equals(proof.getString("buyer_id")))
-                throw new Exception();
+                throw new Exception("buyer_id mismatch");
             JSONArray orders = proof.getJSONArray("orders");
             for (int i = 0; i < orders.length(); i++) {
                 JSONObject order = orders.getJSONObject(i);
@@ -652,8 +653,7 @@ public class ClockworkModBillingClient {
             result[2] = CheckPurchaseResult.notPurchased();
         }
         catch (Exception ex) {
-            if (ex.getClass() != Exception.class)
-                ex.printStackTrace();
+            ex.printStackTrace();
             result[2] = CheckPurchaseResult.stale();
             edit.remove("server-purchases");
             edit.commit();
