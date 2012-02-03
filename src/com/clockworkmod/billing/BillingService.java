@@ -105,6 +105,7 @@ public class BillingService extends Service {
             if (signature != null)
                 Log.i(LOGTAG, signature);
 
+            Log.i(LOGTAG, "Connecting to Market Service to acknowledge transactions.");
             bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
                 @Override
                 public void onServiceDisconnected(ComponentName name) {
@@ -117,35 +118,37 @@ public class BillingService extends Service {
                         @Override
                         public void run() {
                             try {
+                                Log.i(LOGTAG, "Connected to Market Service.");
                                 final IMarketBillingService s = IMarketBillingService.Stub.asInterface(service);
                                 JSONObject purchase = new JSONObject(signedData);
                                 JSONArray orders = purchase.getJSONArray("orders");
-                                if (orders.length() == 0)
-                                    return;
-                                Editor orderData = ClockworkModBillingClient.getInstance().getOrderData().edit();
-                                ArrayList<String> notificationIds = new ArrayList<String>();
-                                JSONObject proof = new JSONObject();
-                                proof.put("signedData", signedData);
-                                proof.put("signature", signature);
-                                String proofString = proof.toString();
-                                for (int i = 0; i < orders.length(); i++) {
-                                    JSONObject order = orders.getJSONObject(i);
-                                    String productId = order.optString("productId", null);
-                                    if (productId != null)
-                                        orderData.putString(productId, proofString);
+                                Log.i(LOGTAG, "Reporting " + orders.length() + " orders to Market Service.");
+                                if (orders.length() != 0) {
+                                    Editor orderData = ClockworkModBillingClient.getInstance().getOrderData().edit();
+                                    ArrayList<String> notificationIds = new ArrayList<String>();
+                                    JSONObject proof = new JSONObject();
+                                    proof.put("signedData", signedData);
+                                    proof.put("signature", signature);
+                                    String proofString = proof.toString();
+                                    for (int i = 0; i < orders.length(); i++) {
+                                        JSONObject order = orders.getJSONObject(i);
+                                        String productId = order.optString("productId", null);
+                                        if (productId != null)
+                                            orderData.putString(productId, proofString);
 
-                                    String notificationId = order.optString("notificationId", null);
-                                    if (notificationId != null)
-                                        notificationIds.add(order.getString("notificationId"));
-                                }
-                                orderData.commit();
-                                reportAndroidPurchase(BillingService.this, signedData, signature);
-                                if (notificationIds.size() > 0) {
-                                    String[] nids = new String[notificationIds.size()];
-                                    nids = notificationIds.toArray(nids);
-                                    Bundle bundle = BillingReceiver.makeRequestBundle(BillingService.this, Consts.METHOD_CONFIRM_NOTIFICATIONS);
-                                    bundle.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, nids);
-                                    s.sendBillingRequest(bundle);
+                                        String notificationId = order.optString("notificationId", null);
+                                        if (notificationId != null)
+                                            notificationIds.add(order.getString("notificationId"));
+                                    }
+                                    orderData.commit();
+                                    reportAndroidPurchase(BillingService.this, signedData, signature);
+                                    if (notificationIds.size() > 0) {
+                                        String[] nids = new String[notificationIds.size()];
+                                        nids = notificationIds.toArray(nids);
+                                        Bundle bundle = BillingReceiver.makeRequestBundle(BillingService.this, Consts.METHOD_CONFIRM_NOTIFICATIONS);
+                                        bundle.putStringArray(Consts.BILLING_REQUEST_NOTIFY_IDS, nids);
+                                        s.sendBillingRequest(bundle);
+                                    }
                                 }
                                 Intent intent = new Intent(BillingReceiver.SUCCEEDED);
                                 intent.putExtra("orders", orders.toString());
