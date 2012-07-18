@@ -13,6 +13,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import org.apache.http.Header;
@@ -56,6 +57,8 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.EditText;
 
+import com.amazon.inapp.purchasing.PurchaseResponse;
+import com.amazon.inapp.purchasing.PurchaseResponse.PurchaseRequestStatus;
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
@@ -68,6 +71,7 @@ public class ClockworkModBillingClient {
     static final String ORDER_URL = API_URL + "/order/%s/%s?buyer_id=%s&custom_payload=%s&sandbox=%s";
     static final String TRIAL_URL = API_URL + "/trial/%s/%s?buyer_id=%s&sandbox=%s&trial_increment=%d&trial_daily_increment=%d";
     static final String INAPP_NOTIFY_URL = API_URL + "/notify/inapp/%s";
+    static final String AMAZON_NOTIFY_URL = API_URL + "/notify/amazon/%s";
     static final String REDEEM_NOTIFY_URL = API_URL + "/notify/redeem/%s";
     static final String PURCHASE_URL = API_URL + "/purchase/%s/%s?nonce=%s&sandbox=%s";
     static final String TRANSFER_URL = API_URL + "/transfer/%s/%s?payer_email=%s&buyer_id=%s&sandbox=%s";
@@ -78,12 +82,15 @@ public class ClockworkModBillingClient {
     String mClockworkPublicKey;
     String mMarketPublicKey;
 
+    Boolean mIsAmazonSandbox = null;
     private ClockworkModBillingClient(Context context, final String sellerId, String clockworkPublicKey, String marketPublicKey, boolean sandbox) {
         mContext = context.getApplicationContext();
         mSandbox = sandbox;
         mSellerId = sellerId;
         mClockworkPublicKey = clockworkPublicKey;
         mMarketPublicKey = marketPublicKey;
+        
+        AmazonHelper.initialize(context);
     }
     
     static private void showAlertDialog(Context context, String s)
@@ -108,6 +115,37 @@ public class ClockworkModBillingClient {
             clearCachedPurchases(context);
         if (callback != null)
             callback.onFinished(result);
+    }
+    
+    
+    SharedPreferences getPendingAmazonPurchases() {
+        return mContext.getApplicationContext().getSharedPreferences("amazon-pending", Context.MODE_PRIVATE);
+    }
+    
+    private void reportPendingAmazonPurchases() {
+    }
+
+    private void startAmazonPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
+        final String purchaseRequestId = payload.getString("purchase_request_id");
+        final String productId = payload.optString("product_id", null);
+        AmazonHelper.startPurchase(productId, new Callback<PurchaseResponse>() {
+            @Override
+            public void onFinished(PurchaseResponse response) {
+                if (response.getPurchaseRequestStatus() == PurchaseRequestStatus.ALREADY_ENTITLED || response.getPurchaseRequestStatus() == PurchaseRequestStatus.SUCCESSFUL) {
+                    callback.onFinished(PurchaseResult.SUCCEEDED);
+                    
+                    if (response.getPurchaseRequestStatus() == PurchaseRequestStatus.SUCCESSFUL) {
+                        SharedPreferences pending = getPendingAmazonPurchases();
+                        Editor editor = pending.edit();
+                        editor.putString(purchaseRequestId, response.getReceipt().getPurchaseToken());
+                        editor.commit();
+                    }
+                    return;
+                }
+
+                callback.onFinished(PurchaseResult.FAILED);
+            }
+        });
     }
 
     private void startPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
@@ -571,15 +609,99 @@ public class ClockworkModBillingClient {
         return ret;
     }
     
+    public List<InAppOrder> getCachedInAppPurchases() {
+        ArrayList<InAppOrder> ret = new ArrayList<InAppOrder>();
+        SharedPreferences orderData = getOrderData();
+        HashMap<String, InAppOrder> orderMap = new HashMap<String, InAppOrder>();
+
+        for (String orderId : orderData.getAll().keySet()) {
+            try {
+                if (orderMap.containsKey(orderId))
+                    continue;
+                String proofString = orderData.getString(orderId, null);
+                if (proofString == null)
+                    continue;
+                JSONObject proof = new JSONObject(proofString);
+                String signedData = proof.getString("signedData");
+                String signature = proof.getString("signature");
+                proof = new JSONObject(signedData);
+                if (!checkSignature(mMarketPublicKey, signedData, signature))
+                    throw new Exception("signature mismatch");
+                // the nonce check also checks against the device id.
+                long nonce = proof.getLong("nonce");
+                if (!checkNonce(mContext, nonce, CACHE_DURATION_FOREVER))
+                    throw new Exception("nonce failure");
+                proof = new JSONObject(signedData);
+                JSONArray orders = proof.getJSONArray("orders");
+                for (int i = 0; i < orders.length(); i++) {
+                    JSONObject order = orders.getJSONObject(i);
+                    orderMap.put(orderId, new InAppOrder(order));
+                }
+            }
+            catch (Exception ex) {
+            }
+        }
+        return ret;
+    }
+        
     private CheckPurchaseResult[] checkCachedPurchases(Context context, String productId, String buyerId, long marketCacheDuration, long billingCacheDuration, SharedPreferences orderData) {
         Editor edit = orderData.edit();
         CheckPurchaseResult[] result = new CheckPurchaseResult[3];
         // check the in app billing cache
-        String proofString;
         if (!mSandbox) {
             // don't check the in app cache for sandbox, as that is always production data.
+
+            // find the matching in app order.
+            boolean found = false;
+            boolean stale = true;
+            for (String orderId: orderData.getAll().keySet()) {
+                if ("server-purchases".equals(orderId))
+                    continue;
+                try {
+                    String proofString = orderData.getString(orderId, null);
+                    if (proofString == null)
+                       continue;
+                    JSONObject proof = new JSONObject(proofString);
+                    String signedData = proof.getString("signedData");
+                    String signature = proof.getString("signature");
+                    proof = new JSONObject(signedData);
+                    JSONArray orders = proof.getJSONArray("orders");
+                    for (int i = 0; i < orders.length(); i++) {
+                        JSONObject order = orders.getJSONObject(i);
+                        if (productId.equals(order.getString("productId")) && context.getPackageName().equals(order.optString("packageName", null))) {
+                            stale = false;
+                            found = true;
+                            if (!checkSignature(mMarketPublicKey, signedData, signature))
+                                throw new Exception("signature mismatch");
+                            // the nonce check also checks against the device id.
+                            long nonce = proof.getLong("nonce");
+                            if (!checkNonce(context, nonce, marketCacheDuration))
+                                throw new Exception("nonce failure");
+
+                            Log.i(LOGTAG, "Cached in app billing success");
+                            result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order));
+                            return result;
+                        }
+                    }
+                }
+                catch (Exception ex) {
+                    ex.printStackTrace();
+                    result[1] = CheckPurchaseResult.stale();
+                    edit.remove(orderId);
+                    edit.commit();
+                }
+            }
+            if (stale) {
+                result[1] = CheckPurchaseResult.stale();
+
+            }
+            else if (!found) {
+                result[1] = CheckPurchaseResult.notPurchased();
+            }
+
+            /*
             try {
-                proofString = orderData.getString(productId, null);
+                String proofString = orderData.getString(productId, null);
                 if (proofString == null)
                     throw new Exception("no proof string");
                 JSONObject proof = new JSONObject(proofString);
@@ -590,8 +712,6 @@ public class ClockworkModBillingClient {
                     throw new Exception("signature mismatch");
 
                 proof = new JSONObject(signedData);
-                // TODO: change this to long in the future. Earlier versions of the in app billing api would
-                // mask it to an int.
                 long nonce = proof.getLong("nonce");
                 // the nonce check also checks against the device id.
                 if (!checkNonce(context, nonce, marketCacheDuration))
@@ -613,11 +733,12 @@ public class ClockworkModBillingClient {
                 edit.remove(productId);
                 edit.commit();
             }
+        */
         }
 
         try
         {
-            proofString = orderData.getString("server-purchases", null);
+            String proofString = orderData.getString("server-purchases", null);
             if (proofString == null)
                 throw new Exception("no proof string");
 
@@ -1006,6 +1127,9 @@ public class ClockworkModBillingClient {
                                 }
                                 else if (type == PurchaseType.REDEEM) {
                                     startRedeemCode(context, buyerId, callback, payload);
+                                }
+                                else if (type == PurchaseType.AMAZON) {
+                                    startAmazonPurchase(context, callback, payload);
                                 }
                                 else {
                                     // dead code?

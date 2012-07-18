@@ -4,5 +4,6 @@ public enum PurchaseType {
     PAYPAL,
     REDEEM,
     MARKET_INAPP,
+    AMAZON,
     ANY
 }

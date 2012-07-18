@@ -132,9 +132,9 @@ public class BillingService extends Service {
                                     String proofString = proof.toString();
                                     for (int i = 0; i < orders.length(); i++) {
                                         JSONObject order = orders.getJSONObject(i);
-                                        String productId = order.optString("productId", null);
-                                        if (productId != null)
-                                            orderData.putString(productId, proofString);
+                                        String orderId = order.optString("orderId", null);
+                                        if (orderId != null)
+                                            orderData.putString(orderId, proofString);
 
                                         String notificationId = order.optString("notificationId", null);
                                         if (notificationId != null)
