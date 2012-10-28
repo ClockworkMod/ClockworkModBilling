@@ -57,8 +57,6 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.EditText;
 
-import com.amazon.inapp.purchasing.PurchaseResponse;
-import com.amazon.inapp.purchasing.PurchaseResponse.PurchaseRequestStatus;
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
@@ -89,8 +87,6 @@ public class ClockworkModBillingClient {
         mSellerId = sellerId;
         mClockworkPublicKey = clockworkPublicKey;
         mMarketPublicKey = marketPublicKey;
-        
-        AmazonHelper.initialize(context);
     }
     
     static private void showAlertDialog(Context context, String s)
@@ -117,37 +113,6 @@ public class ClockworkModBillingClient {
             callback.onFinished(result);
     }
     
-    
-    SharedPreferences getPendingAmazonPurchases() {
-        return mContext.getApplicationContext().getSharedPreferences("amazon-pending", Context.MODE_PRIVATE);
-    }
-    
-    private void reportPendingAmazonPurchases() {
-    }
-
-    private void startAmazonPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
-        final String purchaseRequestId = payload.getString("purchase_request_id");
-        final String productId = payload.optString("product_id", null);
-        AmazonHelper.startPurchase(productId, new Callback<PurchaseResponse>() {
-            @Override
-            public void onFinished(PurchaseResponse response) {
-                if (response.getPurchaseRequestStatus() == PurchaseRequestStatus.ALREADY_ENTITLED || response.getPurchaseRequestStatus() == PurchaseRequestStatus.SUCCESSFUL) {
-                    callback.onFinished(PurchaseResult.SUCCEEDED);
-                    
-                    if (response.getPurchaseRequestStatus() == PurchaseRequestStatus.SUCCESSFUL) {
-                        SharedPreferences pending = getPendingAmazonPurchases();
-                        Editor editor = pending.edit();
-                        editor.putString(purchaseRequestId, response.getReceipt().getPurchaseToken());
-                        editor.commit();
-                    }
-                    return;
-                }
-
-                callback.onFinished(PurchaseResult.FAILED);
-            }
-        });
-    }
-
     private void startPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
         final String sellerId = payload.getString("seller_id");
         final String sandboxEmail = payload.getString("paypal_sandbox_email");
@@ -1127,9 +1092,6 @@ public class ClockworkModBillingClient {
                                 }
                                 else if (type == PurchaseType.REDEEM) {
                                     startRedeemCode(context, buyerId, callback, payload);
-                                }
-                                else if (type == PurchaseType.AMAZON) {
-                                    startAmazonPurchase(context, callback, payload);
                                 }
                                 else {
                                     // dead code?
