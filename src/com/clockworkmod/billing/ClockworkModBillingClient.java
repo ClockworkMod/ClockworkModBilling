@@ -845,7 +845,16 @@ public class ClockworkModBillingClient {
                 }
             });
             Log.i(LOGTAG, "CheckPurchase result: " + syncResult.toString());
-            return syncResult;
+            state.reportedPurchase = true;
+            long til = System.currentTimeMillis() - syncResult.getOrder().getPurchaseTime();
+            if (syncResult.getOrder() instanceof ClockworkOrder) {
+                if (billingCacheDuration / 3 < til || billingCacheDuration == CACHE_DURATION_FOREVER)
+                    return syncResult;
+            }
+            else {
+                if (marketCacheDuration / 3 < til || marketCacheDuration == CACHE_DURATION_FOREVER)
+                    return syncResult;
+            }
         }
 
         // don't do a market payment refresh for the sandbox, as that only returns production data.
@@ -874,7 +883,7 @@ public class ClockworkModBillingClient {
                     else {
                         state.marketResult = CheckPurchaseResult.notPurchased();
                     }
-                    Log.i(LOGTAG, "In app billing result: " + state.marketResult);
+                    Log.i(LOGTAG, "In app billing result: " + state.marketResult.mState);
                     reportPurchase.run();
                 }
             };
@@ -943,6 +952,9 @@ public class ClockworkModBillingClient {
             state.refreshedServer = true;
             state.serverResult = CheckPurchaseResult.notPurchased();
         }
+        
+        if (syncResult != null)
+            return syncResult;
         
         if (state.refreshedServer && state.restoredMarket) {
             handler.post(new Runnable() {
