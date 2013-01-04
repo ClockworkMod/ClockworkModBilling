@@ -3,6 +3,7 @@ package com.clockworkmod.billing;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.NetworkInterface;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
@@ -50,9 +51,11 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.SystemProperties;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.EditText;
@@ -507,7 +510,16 @@ public class ClockworkModBillingClient {
         TelephonyManager tm = (TelephonyManager)context.getSystemService(Context.TELEPHONY_SERVICE);
         String deviceId = tm.getDeviceId();
         if (deviceId == null) {
-            deviceId = "000000000000";
+            String wifiInterface = SystemProperties.get("wifi.interface");
+            try {
+                if (Build.VERSION.SDK_INT < 9)
+                    throw new Exception();
+                String wifiMac = new BigInteger(NetworkInterface.getByName(wifiInterface).getHardwareAddress()).toString(16);
+                deviceId = wifiMac;
+            }
+            catch (Exception e) {
+                deviceId = "000000000000";
+            }
         }
         String ret = digest(deviceId + context.getPackageName());
         return ret;

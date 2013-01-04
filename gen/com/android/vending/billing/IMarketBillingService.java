@@ -23,13 +23,13 @@ public static com.android.vending.billing.IMarketBillingService asInterface(andr
 if ((obj==null)) {
 return null;
 }
-android.os.IInterface iin = (android.os.IInterface)obj.queryLocalInterface(DESCRIPTOR);
+android.os.IInterface iin = obj.queryLocalInterface(DESCRIPTOR);
 if (((iin!=null)&&(iin instanceof com.android.vending.billing.IMarketBillingService))) {
 return ((com.android.vending.billing.IMarketBillingService)iin);
 }
 return new com.android.vending.billing.IMarketBillingService.Stub.Proxy(obj);
 }
-public android.os.IBinder asBinder()
+@Override public android.os.IBinder asBinder()
 {
 return this;
 }
@@ -73,7 +73,7 @@ Proxy(android.os.IBinder remote)
 {
 mRemote = remote;
 }
-public android.os.IBinder asBinder()
+@Override public android.os.IBinder asBinder()
 {
 return mRemote;
 }
@@ -82,7 +82,7 @@ public java.lang.String getInterfaceDescriptor()
 return DESCRIPTOR;
 }
 /** Given the arguments in bundle form, returns a bundle for results. */
-public android.os.Bundle sendBillingRequest(android.os.Bundle bundle) throws android.os.RemoteException
+@Override public android.os.Bundle sendBillingRequest(android.os.Bundle bundle) throws android.os.RemoteException
 {
 android.os.Parcel _data = android.os.Parcel.obtain();
 android.os.Parcel _reply = android.os.Parcel.obtain();
