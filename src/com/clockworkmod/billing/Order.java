@@ -7,4 +7,5 @@ public interface Order {
     String getDeveloperPayload();
     String getProductId();
     long getPurchaseTime();
+    long getTimestamp();
 }

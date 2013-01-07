@@ -8,8 +8,9 @@ public class InAppOrder implements Order {
     }
     
     JSONObject mOrder;
-    InAppOrder(JSONObject order) {
+    InAppOrder(JSONObject order, long timestamp) {
         mOrder = order;
+        this.timestamp = timestamp;
     }
 
     @Override
@@ -23,5 +24,11 @@ public class InAppOrder implements Order {
     
     public long getPurchaseTime() {
         return mOrder.optLong("purchaseTime", 0);
+    }
+
+    private long timestamp;
+    @Override
+    public long getTimestamp() {
+        return timestamp;
     }
 }

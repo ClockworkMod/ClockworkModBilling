@@ -8,8 +8,9 @@ public class ClockworkOrder implements Order {
     }
     
     JSONObject mOrder;
-    ClockworkOrder(JSONObject order) {
+    ClockworkOrder(JSONObject order, long timestamp) {
         mOrder = order;
+        this.timestamp = timestamp;
     }
 
     @Override
@@ -23,5 +24,11 @@ public class ClockworkOrder implements Order {
     
     public long getPurchaseTime() {
         return mOrder.optLong("order_date", 0);
+    }
+
+    private long timestamp;
+    @Override
+    public long getTimestamp() {
+        return timestamp;
     }
 }

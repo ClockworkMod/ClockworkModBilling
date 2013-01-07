@@ -35,6 +35,7 @@ import org.json.JSONObject;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.PendingIntent;
@@ -506,6 +507,7 @@ public class ClockworkModBillingClient {
         return nonce;
     }
     
+    @SuppressLint("NewApi")
     public static String getSafeDeviceId(Context context) {
         TelephonyManager tm = (TelephonyManager)context.getSystemService(Context.TELEPHONY_SERVICE);
         String deviceId = tm.getDeviceId();
@@ -547,6 +549,12 @@ public class ClockworkModBillingClient {
             return false;
         return maskedNonce == deviceNonce;
     }
+    
+    static long getTimestampFromNonce(long nonce) {
+        long dateNonce = nonce & 0x00000000FFFFFFFFL;
+        dateNonce *= 1000L;
+        return dateNonce;
+    }
 
     public static final long CACHE_DURATION_FOREVER = Long.MAX_VALUE;
     
@@ -569,6 +577,7 @@ public class ClockworkModBillingClient {
             proof = new JSONObject(signedData);
             if (proof.optBoolean("sandbox", true) != mSandbox)
                 throw new Exception("sandbox mismatch");
+            long timestamp = proof.getLong("timestamp");
             String sellerId = proof.optString("seller_id", null);
             if (!mSellerId.equals(sellerId))
                 throw new Exception("seller_id mismatch");
@@ -577,7 +586,7 @@ public class ClockworkModBillingClient {
             JSONArray orders = proof.getJSONArray("orders");
             for (int i = 0; i < orders.length(); i++) {
                 JSONObject order = orders.getJSONObject(i);
-                ret.add(new ClockworkOrder(order));
+                ret.add(new ClockworkOrder(order, timestamp));
             }
         }
         catch (Exception ex) {
@@ -609,10 +618,11 @@ public class ClockworkModBillingClient {
                 if (!checkNonce(mContext, nonce, CACHE_DURATION_FOREVER))
                     throw new Exception("nonce failure");
                 proof = new JSONObject(signedData);
+                long timestamp = getTimestampFromNonce(nonce);
                 JSONArray orders = proof.getJSONArray("orders");
                 for (int i = 0; i < orders.length(); i++) {
                     JSONObject order = orders.getJSONObject(i);
-                    orderMap.put(orderId, new InAppOrder(order));
+                    orderMap.put(orderId, new InAppOrder(order, timestamp));
                 }
             }
             catch (Exception ex) {
@@ -654,9 +664,9 @@ public class ClockworkModBillingClient {
                             long nonce = proof.getLong("nonce");
                             if (!checkNonce(context, nonce, marketCacheDuration))
                                 throw new Exception("nonce failure");
-
+                            long timestamp = getTimestampFromNonce(nonce);
                             Log.i(LOGTAG, "Cached in app billing success");
-                            result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order));
+                            result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order, timestamp));
                             return result;
                         }
                     }
@@ -744,7 +754,7 @@ public class ClockworkModBillingClient {
                 JSONObject order = orders.getJSONObject(i);
                 if (productId.equals(order.getString("product_id"))) {
                     Log.i(LOGTAG, "Cached server billing success");
-                    result[0] = result[2] = CheckPurchaseResult.purchased(new ClockworkOrder(order));
+                    result[0] = result[2] = CheckPurchaseResult.purchased(new ClockworkOrder(order, timestamp));
                     return result;
                 }
             }
@@ -858,12 +868,14 @@ public class ClockworkModBillingClient {
             });
             Log.i(LOGTAG, "CheckPurchase result: " + syncResult.toString());
             state.reportedPurchase = true;
-            long til = System.currentTimeMillis() - syncResult.getOrder().getPurchaseTime();
+            long til = syncResult.getOrder().getTimestamp() - System.currentTimeMillis();
             if (syncResult.getOrder() instanceof ClockworkOrder) {
+                til += billingCacheDuration;
                 if (billingCacheDuration / 3 < til || billingCacheDuration == CACHE_DURATION_FOREVER)
                     return syncResult;
             }
             else {
+                til += marketCacheDuration;
                 if (marketCacheDuration / 3 < til || marketCacheDuration == CACHE_DURATION_FOREVER)
                     return syncResult;
             }
