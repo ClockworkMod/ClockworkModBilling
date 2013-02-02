@@ -635,138 +635,111 @@ public class ClockworkModBillingClient {
         Editor edit = orderData.edit();
         CheckPurchaseResult[] result = new CheckPurchaseResult[3];
         // check the in app billing cache
-        if (!mSandbox) {
-            // don't check the in app cache for sandbox, as that is always production data.
-
-            // find the matching in app order.
-            boolean found = false;
-            boolean stale = true;
-            for (String orderId: orderData.getAll().keySet()) {
-                if ("server-purchases".equals(orderId))
-                    continue;
-                try {
-                    String proofString = orderData.getString(orderId, null);
-                    if (proofString == null)
-                       continue;
-                    JSONObject proof = new JSONObject(proofString);
-                    String signedData = proof.getString("signedData");
-                    String signature = proof.getString("signature");
-                    proof = new JSONObject(signedData);
-                    JSONArray orders = proof.getJSONArray("orders");
-                    for (int i = 0; i < orders.length(); i++) {
-                        JSONObject order = orders.getJSONObject(i);
-                        if (productId.equals(order.getString("productId")) && context.getPackageName().equals(order.optString("packageName", null))) {
-                            stale = false;
-                            found = true;
-                            if (!checkSignature(mMarketPublicKey, signedData, signature))
-                                throw new Exception("signature mismatch");
-                            // the nonce check also checks against the device id.
-                            long nonce = proof.getLong("nonce");
-                            if (!checkNonce(context, nonce, marketCacheDuration))
-                                throw new Exception("nonce failure");
-                            long timestamp = getTimestampFromNonce(nonce);
-                            Log.i(LOGTAG, "Cached in app billing success");
-                            result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order, timestamp));
-                            return result;
+        if (0 != marketCacheDuration) {
+            if (!mSandbox) {
+                // don't check the in app cache for sandbox, as that is always production data.
+    
+                // find the matching in app order.
+                boolean found = false;
+                boolean stale = true;
+                for (String orderId: orderData.getAll().keySet()) {
+                    if ("server-purchases".equals(orderId))
+                        continue;
+                    try {
+                        String proofString = orderData.getString(orderId, null);
+                        if (proofString == null)
+                           continue;
+                        JSONObject proof = new JSONObject(proofString);
+                        String signedData = proof.getString("signedData");
+                        String signature = proof.getString("signature");
+                        proof = new JSONObject(signedData);
+                        JSONArray orders = proof.getJSONArray("orders");
+                        for (int i = 0; i < orders.length(); i++) {
+                            JSONObject order = orders.getJSONObject(i);
+                            if (productId.equals(order.getString("productId")) && context.getPackageName().equals(order.optString("packageName", null))) {
+                                stale = false;
+                                found = true;
+                                if (!checkSignature(mMarketPublicKey, signedData, signature))
+                                    throw new Exception("signature mismatch");
+                                // the nonce check also checks against the device id.
+                                long nonce = proof.getLong("nonce");
+                                if (!checkNonce(context, nonce, marketCacheDuration))
+                                    throw new Exception("nonce failure");
+                                long timestamp = getTimestampFromNonce(nonce);
+                                Log.i(LOGTAG, "Cached in app billing success");
+                                result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order, timestamp));
+                                return result;
+                            }
                         }
                     }
+                    catch (Exception ex) {
+                        ex.printStackTrace();
+                        result[1] = CheckPurchaseResult.stale();
+                        edit.remove(orderId);
+                        edit.commit();
+                    }
                 }
-                catch (Exception ex) {
-                    ex.printStackTrace();
+                if (stale) {
                     result[1] = CheckPurchaseResult.stale();
-                    edit.remove(orderId);
-                    edit.commit();
+                }
+                else if (!found) {
+                    result[1] = CheckPurchaseResult.notPurchased();
                 }
             }
-            if (stale) {
-                result[1] = CheckPurchaseResult.stale();
+        }
+        else {
+            result[1] = CheckPurchaseResult.stale();
+        }
 
-            }
-            else if (!found) {
-                result[1] = CheckPurchaseResult.notPurchased();
-            }
-
-            /*
-            try {
-                String proofString = orderData.getString(productId, null);
+        if (0 != billingCacheDuration) {
+            try
+            {
+                String proofString = orderData.getString("server-purchases", null);
                 if (proofString == null)
                     throw new Exception("no proof string");
+    
                 JSONObject proof = new JSONObject(proofString);
                 Log.i(LOGTAG, proof.toString(4));
-                String signedData = proof.getString("signedData");
+                String signedData = proof.getString("signed_data");
                 String signature = proof.getString("signature");
-                if (!checkSignature(mMarketPublicKey, signedData, signature))
+                if (!checkSignature(mClockworkPublicKey, signedData, signature))
                     throw new Exception("signature mismatch");
-
+    
                 proof = new JSONObject(signedData);
-                long nonce = proof.getLong("nonce");
-                // the nonce check also checks against the device id.
-                if (!checkNonce(context, nonce, marketCacheDuration))
-                    throw new Exception("nonce failure");
+                if (proof.optBoolean("sandbox", true) != mSandbox)
+                    throw new Exception("sandbox mismatch");
+                String sellerId = proof.optString("seller_id", null);
+                if (!mSellerId.equals(sellerId))
+                    throw new Exception("seller_id mismatch");
+                long timestamp = proof.getLong("timestamp");
+                // no need to check the nonce as done above,
+                // checking the returned timestamp and buyer_id is good enough
+                if (billingCacheDuration != CACHE_DURATION_FOREVER && timestamp < System.currentTimeMillis() - billingCacheDuration)
+                    throw new Exception("cache expired");
+                if (!buyerId.equals(proof.getString("buyer_id")))
+                    throw new Exception("buyer_id mismatch");
                 JSONArray orders = proof.getJSONArray("orders");
                 for (int i = 0; i < orders.length(); i++) {
                     JSONObject order = orders.getJSONObject(i);
-                    if (productId.equals(order.getString("productId")) && context.getPackageName().equals(order.optString("packageName", null))) {
-                        Log.i(LOGTAG, "Cached in app billing success");
-                        result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order));
+                    if (productId.equals(order.getString("product_id"))) {
+                        Log.i(LOGTAG, "Cached server billing success");
+                        result[0] = result[2] = CheckPurchaseResult.purchased(new ClockworkOrder(order, timestamp));
                         return result;
                     }
                 }
-                result[1] = CheckPurchaseResult.notPurchased();
+                result[2] = CheckPurchaseResult.notPurchased();
             }
             catch (Exception ex) {
                 ex.printStackTrace();
-                result[1] = CheckPurchaseResult.stale();
-                edit.remove(productId);
+                result[2] = CheckPurchaseResult.stale();
+                edit.remove("server-purchases");
                 edit.commit();
             }
-        */
         }
-
-        try
-        {
-            String proofString = orderData.getString("server-purchases", null);
-            if (proofString == null)
-                throw new Exception("no proof string");
-
-            JSONObject proof = new JSONObject(proofString);
-            Log.i(LOGTAG, proof.toString(4));
-            String signedData = proof.getString("signed_data");
-            String signature = proof.getString("signature");
-            if (!checkSignature(mClockworkPublicKey, signedData, signature))
-                throw new Exception("signature mismatch");
-
-            proof = new JSONObject(signedData);
-            if (proof.optBoolean("sandbox", true) != mSandbox)
-                throw new Exception("sandbox mismatch");
-            String sellerId = proof.optString("seller_id", null);
-            if (!mSellerId.equals(sellerId))
-                throw new Exception("seller_id mismatch");
-            long timestamp = proof.getLong("timestamp");
-            // no need to check the nonce as done above,
-            // checking the returned timestamp and buyer_id is good enough
-            if (billingCacheDuration != CACHE_DURATION_FOREVER && timestamp < System.currentTimeMillis() - billingCacheDuration)
-                throw new Exception("cache expired");
-            if (!buyerId.equals(proof.getString("buyer_id")))
-                throw new Exception("buyer_id mismatch");
-            JSONArray orders = proof.getJSONArray("orders");
-            for (int i = 0; i < orders.length(); i++) {
-                JSONObject order = orders.getJSONObject(i);
-                if (productId.equals(order.getString("product_id"))) {
-                    Log.i(LOGTAG, "Cached server billing success");
-                    result[0] = result[2] = CheckPurchaseResult.purchased(new ClockworkOrder(order, timestamp));
-                    return result;
-                }
-            }
-            result[2] = CheckPurchaseResult.notPurchased();
-        }
-        catch (Exception ex) {
-            ex.printStackTrace();
+        else {
             result[2] = CheckPurchaseResult.stale();
-            edit.remove("server-purchases");
-            edit.commit();
         }
-
+        
         if (result[1] == CheckPurchaseResult.notPurchased() && result[2] == CheckPurchaseResult.notPurchased())
             result[0] = CheckPurchaseResult.notPurchased();
         else
@@ -1157,7 +1130,7 @@ public class ClockworkModBillingClient {
     }
 
     // should we move this into an activity?
-    private void startPurchase(final Context context, final String productId, String _buyerId, final LinkPurchase linkOption, final boolean allowCachedEmail, final String buyerEmail, final String customPayload, final PurchaseType type, final PurchaseCallback callback) {
+    public void startPurchase(final Context context, final String productId, String _buyerId, final LinkPurchase linkOption, final boolean allowCachedEmail, final String buyerEmail, final String customPayload, final PurchaseType type, final PurchaseCallback callback) {
         if (type == null)
             throw new NullPointerException("type");
         if (_buyerId == null)
