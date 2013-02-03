@@ -854,9 +854,10 @@ public class ClockworkModBillingClient {
             }
         }
 
+        final BroadcastReceiver receiver;
         // don't do a market payment refresh for the sandbox, as that only returns production data.
         if (!mSandbox && cachedResults[1].isStale()) {
-            BroadcastReceiver receiver = new BroadcastReceiver() {
+            receiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
                     try {
@@ -893,6 +894,7 @@ public class ClockworkModBillingClient {
             refreshMarketPurchases();
         }
         else {
+            receiver = null;
             state.restoredMarket = true;
             state.marketResult = CheckPurchaseResult.notPurchased();
         }
@@ -972,6 +974,12 @@ public class ClockworkModBillingClient {
                     foreground(new Runnable() {
                         @Override
                         public void run() {
+                            try {
+                                if (receiver != null)
+                                    context.unregisterReceiver(receiver);
+                            }
+                            catch (Exception ex) {
+                            }
                             state.restoredMarket = true;
                             state.refreshedServer = true;
                             reportPurchase.run();
