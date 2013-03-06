@@ -374,8 +374,6 @@ public class ClockworkModBillingClient {
         builder.setPositiveButton(android.R.string.ok, new OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                ProgressDialog dlg = new ProgressDialog(context);
-                dlg.setMessage("Redeeming...");
                 final String code = edit.getText().toString();
                 ThreadingRunnable.background(new ThreadingRunnable() {
                     @Override
@@ -856,7 +854,7 @@ public class ClockworkModBillingClient {
 
         final BroadcastReceiver receiver;
         // don't do a market payment refresh for the sandbox, as that only returns production data.
-        if (!mSandbox && cachedResults[1].isStale()) {
+        if (!mSandbox && cachedResults[1] != null && cachedResults[1].isStale()) {
             receiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
@@ -899,7 +897,7 @@ public class ClockworkModBillingClient {
             state.marketResult = CheckPurchaseResult.notPurchased();
         }
 
-        if (cachedResults[2].isStale()) {
+        if (cachedResults[2] != null && cachedResults[2].isStale()) {
             SharedPreferences settings = getCachedSettings();
             final String authToken = settings.getString("authToken", null);
             // refresh the server purchases
