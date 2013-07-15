@@ -2,7 +2,7 @@
 
 /*
  * This file is auto-generated.  DO NOT MODIFY.
- * Original file: /Users/koush/src/ClockworkModBilling/src/com/android/vending/billing/IMarketBillingService.aidl
+ * Original file: /Volumes/Data/src/Android/ClockworkModBilling/src/com/android/vending/billing/IMarketBillingService.aidl
  */
 package com.android.vending.billing;
 public interface IMarketBillingService extends android.os.IInterface
