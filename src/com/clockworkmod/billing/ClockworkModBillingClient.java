@@ -802,6 +802,7 @@ public class ClockworkModBillingClient {
                     // prevent double reporting
                     if (!state.reportedPurchase) {
                         state.reportedPurchase = true;
+                        context.sendBroadcast(new Intent(BillingReceiver.CANCELLED));
                         if (callback == null)
                             return;
                         if (state.marketResult.isPurchased())
@@ -991,10 +992,18 @@ public class ClockworkModBillingClient {
         
         return CheckPurchaseResult.pending();
     }
-    
+
     public Intent getRecoverPurchasesActivityIntent(Context context, String productId, String buyerId) {
         Intent intent = new Intent(context, BillingActivity.class);
         intent.putExtra("action", "recover");
+        intent.putExtra("productId", productId);
+        buyerId = buyerId == null ? getSafeDeviceId(context) : buyerId;
+        intent.putExtra("buyerId", buyerId);
+        return intent;
+    }
+
+    public Intent getRedeemActivityIntent(Context context, String productId, String buyerId) {
+        Intent intent = new Intent(context, RedeemActivity.class);
         intent.putExtra("productId", productId);
         buyerId = buyerId == null ? getSafeDeviceId(context) : buyerId;
         intent.putExtra("buyerId", buyerId);
