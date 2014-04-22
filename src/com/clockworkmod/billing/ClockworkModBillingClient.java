@@ -61,6 +61,7 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.EditText;
 
+import com.amazon.inapp.purchasing.PurchasingManager;
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
@@ -450,6 +451,9 @@ public class ClockworkModBillingClient {
             return mInstance;
         }
         mInstance = new ClockworkModBillingClient(context, sellerId, clockworkPublicKey, marketPublicKey, sandbox);
+        AmazonPurchasingObserver amazonPurchasingObserver = new AmazonPurchasingObserver(context);
+        PurchasingManager.registerObserver(amazonPurchasingObserver);
+        PurchasingManager.initiateGetUserIdRequest();
         return mInstance;
     }
 
