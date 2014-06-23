@@ -15,6 +15,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Hashtable;
 import java.util.List;
 
 import org.apache.http.Header;
@@ -61,7 +62,12 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.EditText;
 
+import com.amazon.inapp.purchasing.GetUserIdResponse;
+import com.amazon.inapp.purchasing.Offset;
+import com.amazon.inapp.purchasing.PurchaseResponse;
+import com.amazon.inapp.purchasing.PurchaseUpdatesResponse;
 import com.amazon.inapp.purchasing.PurchasingManager;
+import com.amazon.inapp.purchasing.Receipt;
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
@@ -85,7 +91,76 @@ public class ClockworkModBillingClient {
     String mClockworkPublicKey;
     String mMarketPublicKey;
 
-    Boolean mIsAmazonSandbox = null;
+    Boolean mIsAmazonSandbox;
+    String amazonUserId;
+    PurchaseCallback amazonPurchaseCallback;
+    Runnable amazonCheckPurchaseCallback;
+    PurchaseUpdatesResponse amazonPurchases;
+
+    boolean mSandbox = true;
+    public static ClockworkModBillingClient init(Context context, String sellerId, String clockworkPublicKey, String marketPublicKey, boolean sandbox) {
+        if (mInstance != null) {
+            //if (sandbox != mInstance.mSandbox)
+            //    throw new Exception("ClockworkModBillingClient has already been initialized for a different environment.");
+            return mInstance;
+        }
+        mInstance = new ClockworkModBillingClient(context, sellerId, clockworkPublicKey, marketPublicKey, sandbox);
+        final AmazonPurchasingObserver amazonPurchasingObserver = new AmazonPurchasingObserver(context) {
+            @Override
+            public void onSdkAvailable(boolean sandbox) {
+                super.onSdkAvailable(sandbox);
+                mInstance.mIsAmazonSandbox = sandbox;
+            }
+
+            @Override
+            public void onGetUserIdResponse(GetUserIdResponse response) {
+                super.onGetUserIdResponse(response);
+                if (response.getUserIdRequestStatus() != GetUserIdResponse.GetUserIdRequestStatus.SUCCESSFUL)
+                    return;
+                mInstance.amazonUserId = response.getUserId();
+                PurchasingManager.initiatePurchaseUpdatesRequest(Offset.BEGINNING);
+            }
+
+            @Override
+            public void onPurchaseResponse(PurchaseResponse purchaseResponse) {
+                super.onPurchaseResponse(purchaseResponse);
+                if (purchaseResponse.getPurchaseRequestStatus() != PurchaseResponse.PurchaseRequestStatus.SUCCESSFUL
+                    && purchaseResponse.getPurchaseRequestStatus() != PurchaseResponse.PurchaseRequestStatus.ALREADY_ENTITLED) {
+                    if (mInstance.amazonPurchaseCallback != null) {
+                        mInstance.amazonPurchaseCallback.onFinished(PurchaseResult.FAILED);
+                        mInstance.amazonPurchaseCallback = null;
+                    }
+                    return;
+                }
+                if (mInstance.mIsAmazonSandbox == null || mInstance.mIsAmazonSandbox != mInstance.mSandbox)
+                    return;
+                if (mInstance.amazonPurchaseCallback != null) {
+                    mInstance.amazonPurchaseCallback.onFinished(PurchaseResult.SUCCEEDED);
+                    mInstance.amazonPurchaseCallback = null;
+                }
+            }
+
+            @Override
+            public void onPurchaseUpdatesResponse(PurchaseUpdatesResponse purchaseUpdatesResponse) {
+                super.onPurchaseUpdatesResponse(purchaseUpdatesResponse);
+                if (mInstance.mIsAmazonSandbox == null ||mInstance.mIsAmazonSandbox != mInstance.mSandbox)
+                    return;
+                mInstance.amazonPurchases = purchaseUpdatesResponse;
+                if (mInstance.amazonCheckPurchaseCallback != null) {
+                    mInstance.amazonCheckPurchaseCallback.run();
+                    mInstance.amazonCheckPurchaseCallback = null;
+                }
+            }
+        };
+        PurchasingManager.registerObserver(amazonPurchasingObserver);
+        PurchasingManager.initiateGetUserIdRequest();
+        return mInstance;
+    }
+
+    public static ClockworkModBillingClient getInstance() {
+        return mInstance;
+    }
+
     private ClockworkModBillingClient(Context context, final String sellerId, String clockworkPublicKey, String marketPublicKey, boolean sandbox) {
         mContext = context.getApplicationContext();
         mSandbox = sandbox;
@@ -117,7 +192,12 @@ public class ClockworkModBillingClient {
         if (callback != null)
             callback.onFinished(result);
     }
-    
+
+    private void startAmazonPurchase(final Context context, final String buyerId, final PurchaseCallback callback, final JSONObject payload) {
+        amazonPurchaseCallback = callback;
+        PurchasingManager.initiatePurchaseRequest("cast.premium");
+    }
+
     private void startPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
         final String sellerId = payload.getString("seller_id");
         final String sandboxEmail = payload.getString("paypal_sandbox_email");
@@ -443,24 +523,6 @@ public class ClockworkModBillingClient {
         builder.create().show();
     }
 
-    boolean mSandbox = true;
-    public static ClockworkModBillingClient init(Context context, String sellerId, String clockworkPublicKey, String marketPublicKey, boolean sandbox) {
-        if (mInstance != null) {
-            //if (sandbox != mInstance.mSandbox)
-            //    throw new Exception("ClockworkModBillingClient has already been initialized for a different environment.");
-            return mInstance;
-        }
-        mInstance = new ClockworkModBillingClient(context, sellerId, clockworkPublicKey, marketPublicKey, sandbox);
-        AmazonPurchasingObserver amazonPurchasingObserver = new AmazonPurchasingObserver(context);
-        PurchasingManager.registerObserver(amazonPurchasingObserver);
-        PurchasingManager.initiateGetUserIdRequest();
-        return mInstance;
-    }
-
-    public static ClockworkModBillingClient getInstance() {
-        return mInstance;
-    }
-    
     SharedPreferences getCachedSettings() {
         return mContext.getApplicationContext().getSharedPreferences("billing-settings", Context.MODE_PRIVATE);
     }
@@ -752,8 +814,10 @@ public class ClockworkModBillingClient {
     private class CheckPurchaseState {
         public boolean restoredMarket = false;
         public boolean refreshedServer = false;
+        public boolean refreshedAmazon = false;
         public CheckPurchaseResult serverResult = CheckPurchaseResult.error();
         public CheckPurchaseResult marketResult = CheckPurchaseResult.error();
+        public CheckPurchaseResult amazonResult = CheckPurchaseResult.error();
         public boolean reportedPurchase = false;
     }
     
@@ -790,6 +854,17 @@ public class ClockworkModBillingClient {
         });
     }
 
+    public CheckPurchaseResult checkAmazon(String productId) {
+        if (amazonPurchases.getReceipts() != null) {
+            for (Receipt receipt: amazonPurchases.getReceipts()) {
+                if (receipt.getSku().equals(productId)) {
+                    return CheckPurchaseResult.purchased(null);
+                }
+            }
+        }
+        return CheckPurchaseResult.notPurchased();
+    }
+
     public CheckPurchaseResult checkPurchase(final Context context, final String productId, final String buyerId, final long cacheDuration, final CheckPurchaseCallback callback) {
         return checkPurchase(context, productId, buyerId, cacheDuration, cacheDuration, callback);
     }
@@ -801,8 +876,8 @@ public class ClockworkModBillingClient {
         final Runnable reportPurchase = new Runnable() {
             @Override
             public void run() {
-                // report if both system of records have reported back, or one indicates success
-                if ((state.refreshedServer && state.restoredMarket) || state.marketResult.isPurchased() || state.serverResult.isPurchased()) {
+                // report if all system of records have reported back, or one indicates success
+                if ((state.refreshedServer && state.restoredMarket && state.refreshedAmazon) || state.marketResult.isPurchased() || state.serverResult.isPurchased() || state.amazonResult.isPurchased()) {
                     // prevent double reporting
                     if (!state.reportedPurchase) {
                         state.reportedPurchase = true;
@@ -813,6 +888,8 @@ public class ClockworkModBillingClient {
                             callback.onFinished(state.marketResult);
                         else if (state.serverResult.isPurchased())
                             callback.onFinished(state.serverResult);
+                        else if (state.amazonResult.isPurchased())
+                            callback.onFinished(state.amazonResult);
                         else if (state.marketResult.isError())
                             callback.onFinished(state.marketResult);
                         else if (state.serverResult.isError())
@@ -954,11 +1031,28 @@ public class ClockworkModBillingClient {
             state.refreshedServer = true;
             state.serverResult = CheckPurchaseResult.notPurchased();
         }
-        
+
+        if (amazonPurchases != null) {
+            state.refreshedAmazon = true;
+            state.amazonResult = checkAmazon(productId);
+            handler.post(reportPurchase);
+        }
+        else {
+            amazonCheckPurchaseCallback = new Runnable() {
+                @Override
+                public void run() {
+                    state.refreshedAmazon = true;
+                    state.amazonResult = checkAmazon(productId);
+                    handler.post(reportPurchase);
+                }
+            };
+            PurchasingManager.initiatePurchaseUpdatesRequest(Offset.BEGINNING);
+        }
+
         if (syncResult != null)
             return syncResult;
         
-        if (state.refreshedServer && state.restoredMarket) {
+        if (state.refreshedServer && state.restoredMarket && state.refreshedAmazon) {
             handler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -983,6 +1077,7 @@ public class ClockworkModBillingClient {
                             }
                             catch (Exception ex) {
                             }
+                            state.refreshedAmazon = true;
                             state.restoredMarket = true;
                             state.refreshedServer = true;
                             reportPurchase.run();
@@ -1114,6 +1209,9 @@ public class ClockworkModBillingClient {
                             try {
                                 if (type == PurchaseType.PAYPAL) {
                                     startPayPalPurchase(context, callback, payload);
+                                }
+                                else if (type == PurchaseType.AMAZON) {
+                                    startAmazonPurchase(context, buyerId, callback, payload);
                                 }
                                 else if (type == PurchaseType.MARKET_INAPP) {
                                     startAndroidPurchase(context, buyerId, callback, payload);
