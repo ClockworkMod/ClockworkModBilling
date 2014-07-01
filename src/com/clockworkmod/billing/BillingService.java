@@ -14,6 +14,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences.Editor;
+import android.content.pm.ResolveInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -70,9 +71,11 @@ public class BillingService extends Service {
                 stopSelf();
             }
         }, 5 * 60 * 1000);
-        
+
+        Intent i = new Intent("com.android.vending.billing.MarketBillingService.BIND");
+        ResolveInfo ri = getPackageManager().resolveService(i, 0);
         if (REFRESH_MARKET.equals(action)) {
-            bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
+            bindService(i.setClassName(ri.serviceInfo.packageName, ri.serviceInfo.name), new ServiceConnection() {
                 @Override
                 public void onServiceDisconnected(ComponentName name) {
                 }

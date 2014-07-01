@@ -1,39 +1,5 @@
 package com.clockworkmod.billing;
 
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.net.NetworkInterface;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URLEncoder;
-import java.security.KeyFactory;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Hashtable;
-import java.util.List;
-
-import org.apache.http.Header;
-import org.apache.http.HttpMessage;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.params.HttpClientParams;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.params.BasicHttpParams;
-import org.apache.http.params.HttpParams;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.annotation.SuppressLint;
@@ -74,6 +40,39 @@ import com.paypal.android.MEP.PayPalInvoiceData;
 import com.paypal.android.MEP.PayPalInvoiceItem;
 import com.paypal.android.MEP.PayPalPayment;
 
+import org.apache.http.Header;
+import org.apache.http.HttpMessage;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.params.HttpClientParams;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpParams;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.net.NetworkInterface;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.security.KeyFactory;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
 public class ClockworkModBillingClient {
     static final String BASE_URL = "https://clockworkbilling.appspot.com";
     static final String API_URL = BASE_URL + "/api/v1";
@@ -96,6 +95,10 @@ public class ClockworkModBillingClient {
     PurchaseCallback amazonPurchaseCallback;
     Runnable amazonCheckPurchaseCallback;
     PurchaseUpdatesResponse amazonPurchases;
+    boolean hasAmazon;
+    public boolean hasAmazon() {
+        return hasAmazon;
+    }
 
     boolean mSandbox = true;
     public static ClockworkModBillingClient init(Context context, String sellerId, String clockworkPublicKey, String marketPublicKey, boolean sandbox) {
@@ -117,6 +120,7 @@ public class ClockworkModBillingClient {
                 super.onGetUserIdResponse(response);
                 if (response.getUserIdRequestStatus() != GetUserIdResponse.GetUserIdRequestStatus.SUCCESSFUL)
                     return;
+                mInstance.hasAmazon = true;
                 mInstance.amazonUserId = response.getUserId();
                 PurchasingManager.initiatePurchaseUpdatesRequest(Offset.BEGINNING);
             }
@@ -153,7 +157,8 @@ public class ClockworkModBillingClient {
             }
         };
         PurchasingManager.registerObserver(amazonPurchasingObserver);
-        PurchasingManager.initiateGetUserIdRequest();
+        if (Build.VERSION.SDK_INT <= 19)
+            PurchasingManager.initiateGetUserIdRequest();
         return mInstance;
     }
 
@@ -855,7 +860,7 @@ public class ClockworkModBillingClient {
     }
 
     public CheckPurchaseResult checkAmazon(String productId) {
-        if (amazonPurchases.getReceipts() != null) {
+        if (amazonPurchaseCallback != null && amazonPurchases.getReceipts() != null) {
             for (Receipt receipt: amazonPurchases.getReceipts()) {
                 if (receipt.getSku().equals(productId)) {
                     return CheckPurchaseResult.purchased(null);
@@ -1032,7 +1037,7 @@ public class ClockworkModBillingClient {
             state.serverResult = CheckPurchaseResult.notPurchased();
         }
 
-        if (amazonPurchases != null) {
+        if (amazonPurchases != null || !hasAmazon) {
             state.refreshedAmazon = true;
             state.amazonResult = checkAmazon(productId);
             handler.post(reportPurchase);
