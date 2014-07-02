@@ -157,8 +157,7 @@ public class ClockworkModBillingClient {
             }
         };
         PurchasingManager.registerObserver(amazonPurchasingObserver);
-        if (Build.VERSION.SDK_INT <= 19)
-            PurchasingManager.initiateGetUserIdRequest();
+        PurchasingManager.initiateGetUserIdRequest();
         return mInstance;
     }
 
