@@ -113,6 +113,8 @@ public class ClockworkModBillingClient {
             public void onSdkAvailable(boolean sandbox) {
                 super.onSdkAvailable(sandbox);
                 mInstance.mIsAmazonSandbox = sandbox;
+                PurchasingManager.initiateGetUserIdRequest();
+                PurchasingManager.initiatePurchaseUpdatesRequest(Offset.BEGINNING);
             }
 
             @Override
@@ -122,7 +124,6 @@ public class ClockworkModBillingClient {
                     return;
                 mInstance.hasAmazon = true;
                 mInstance.amazonUserId = response.getUserId();
-                PurchasingManager.initiatePurchaseUpdatesRequest(Offset.BEGINNING);
             }
 
             @Override
@@ -859,7 +860,7 @@ public class ClockworkModBillingClient {
     }
 
     public CheckPurchaseResult checkAmazon(String productId) {
-        if (amazonPurchaseCallback != null && amazonPurchases.getReceipts() != null) {
+        if (amazonPurchases != null && amazonPurchases.getReceipts() != null) {
             for (Receipt receipt: amazonPurchases.getReceipts()) {
                 if (receipt.getSku().equals(productId)) {
                     return CheckPurchaseResult.purchased(null);
