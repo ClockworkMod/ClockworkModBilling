@@ -60,8 +60,8 @@
     </content>
     <orderEntry type="jdk" jdkName="Android API 20, L preview Platform" jdkType="Android SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" exported="" name="in-app-purchasing-2.0.0" level="project" />
     <orderEntry type="library" exported="" name="PayPal_MPL" level="project" />
-    <orderEntry type="library" exported="" name="in-app-purchasing-1.0.3" level="project" />
   </component>
 </module>
 

@@ -28,12 +28,11 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.EditText;
 
-import com.amazon.inapp.purchasing.GetUserIdResponse;
-import com.amazon.inapp.purchasing.Offset;
-import com.amazon.inapp.purchasing.PurchaseResponse;
-import com.amazon.inapp.purchasing.PurchaseUpdatesResponse;
-import com.amazon.inapp.purchasing.PurchasingManager;
-import com.amazon.inapp.purchasing.Receipt;
+import com.amazon.device.iap.PurchasingService;
+import com.amazon.device.iap.model.PurchaseResponse;
+import com.amazon.device.iap.model.PurchaseUpdatesResponse;
+import com.amazon.device.iap.model.Receipt;
+import com.amazon.device.iap.model.UserDataResponse;
 import com.android.vending.billing.IMarketBillingService;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
@@ -95,10 +94,6 @@ public class ClockworkModBillingClient {
     PurchaseCallback amazonPurchaseCallback;
     Runnable amazonCheckPurchaseCallback;
     PurchaseUpdatesResponse amazonPurchases;
-    boolean hasAmazon;
-    public boolean hasAmazon() {
-        return hasAmazon;
-    }
 
     boolean mSandbox = true;
     public static ClockworkModBillingClient init(Context context, String sellerId, String clockworkPublicKey, String marketPublicKey, boolean sandbox) {
@@ -110,36 +105,32 @@ public class ClockworkModBillingClient {
         mInstance = new ClockworkModBillingClient(context, sellerId, clockworkPublicKey, marketPublicKey, sandbox);
         final AmazonPurchasingObserver amazonPurchasingObserver = new AmazonPurchasingObserver(context) {
             @Override
-            public void onSdkAvailable(boolean sandbox) {
-                super.onSdkAvailable(sandbox);
-                mInstance.mIsAmazonSandbox = sandbox;
-                PurchasingManager.initiateGetUserIdRequest();
-                PurchasingManager.initiatePurchaseUpdatesRequest(Offset.BEGINNING);
-            }
-
-            @Override
-            public void onGetUserIdResponse(GetUserIdResponse response) {
-                super.onGetUserIdResponse(response);
-                if (response.getUserIdRequestStatus() != GetUserIdResponse.GetUserIdRequestStatus.SUCCESSFUL)
-                    return;
-                mInstance.hasAmazon = true;
-                mInstance.amazonUserId = response.getUserId();
+            public void onUserDataResponse(UserDataResponse userDataResponse) {
+                super.onUserDataResponse(userDataResponse);
+                Log.i(LOGTAG, "Got user data.");
+                PurchasingService.getPurchaseUpdates(true);
+                mInstance.amazonUserId = userDataResponse.getUserData().getUserId();
             }
 
             @Override
             public void onPurchaseResponse(PurchaseResponse purchaseResponse) {
                 super.onPurchaseResponse(purchaseResponse);
-                if (purchaseResponse.getPurchaseRequestStatus() != PurchaseResponse.PurchaseRequestStatus.SUCCESSFUL
-                    && purchaseResponse.getPurchaseRequestStatus() != PurchaseResponse.PurchaseRequestStatus.ALREADY_ENTITLED) {
+                if (purchaseResponse.getRequestStatus() != PurchaseResponse.RequestStatus.SUCCESSFUL
+                && purchaseResponse.getRequestStatus() != PurchaseResponse.RequestStatus.ALREADY_PURCHASED) {
+                    Log.i(LOGTAG, "Purchase failure: " + purchaseResponse.getRequestStatus());
                     if (mInstance.amazonPurchaseCallback != null) {
                         mInstance.amazonPurchaseCallback.onFinished(PurchaseResult.FAILED);
                         mInstance.amazonPurchaseCallback = null;
                     }
                     return;
                 }
-                if (mInstance.mIsAmazonSandbox == null || mInstance.mIsAmazonSandbox != mInstance.mSandbox)
+                Log.i(LOGTAG, "Purchase success: " + purchaseResponse.getRequestStatus());
+                if (mInstance.mIsAmazonSandbox == null || mInstance.mIsAmazonSandbox != mInstance.mSandbox) {
+                    Log.i(LOGTAG, "Purchase Sandbox mismatch");
                     return;
+                }
                 if (mInstance.amazonPurchaseCallback != null) {
+                    Log.i(LOGTAG, "Invoking purchase callback");
                     mInstance.amazonPurchaseCallback.onFinished(PurchaseResult.SUCCEEDED);
                     mInstance.amazonPurchaseCallback = null;
                 }
@@ -148,17 +139,29 @@ public class ClockworkModBillingClient {
             @Override
             public void onPurchaseUpdatesResponse(PurchaseUpdatesResponse purchaseUpdatesResponse) {
                 super.onPurchaseUpdatesResponse(purchaseUpdatesResponse);
-                if (mInstance.mIsAmazonSandbox == null ||mInstance.mIsAmazonSandbox != mInstance.mSandbox)
+
+                Log.i(LOGTAG, "Got purchase updates.");
+                if (purchaseUpdatesResponse != null && purchaseUpdatesResponse.getReceipts() != null) {
+                    Log.i(LOGTAG, "Receipts: " + purchaseUpdatesResponse.getReceipts().size());
+                }
+
+                if (mInstance.mIsAmazonSandbox == null || mInstance.mIsAmazonSandbox != mInstance.mSandbox) {
+                    Log.i(LOGTAG, "Purchase Updates Sandbox mismatch");
                     return;
+                }
                 mInstance.amazonPurchases = purchaseUpdatesResponse;
                 if (mInstance.amazonCheckPurchaseCallback != null) {
+                    Log.i(LOGTAG, "Invoking purchase updates callback");
                     mInstance.amazonCheckPurchaseCallback.run();
                     mInstance.amazonCheckPurchaseCallback = null;
                 }
             }
         };
-        PurchasingManager.registerObserver(amazonPurchasingObserver);
-        PurchasingManager.initiateGetUserIdRequest();
+
+        PurchasingService.registerListener(context, amazonPurchasingObserver);
+        mInstance.mIsAmazonSandbox = PurchasingService.IS_SANDBOX_MODE;
+        PurchasingService.getUserData();
+        PurchasingService.getPurchaseUpdates(true);
         return mInstance;
     }
 
@@ -200,7 +203,7 @@ public class ClockworkModBillingClient {
 
     private void startAmazonPurchase(final Context context, final String buyerId, final PurchaseCallback callback, final JSONObject payload) {
         amazonPurchaseCallback = callback;
-        PurchasingManager.initiatePurchaseRequest("cast.premium");
+        PurchasingService.purchase("cast.premium");
     }
 
     private void startPayPalPurchase(final Context context, final PurchaseCallback callback, final JSONObject payload) throws JSONException {
@@ -1037,7 +1040,7 @@ public class ClockworkModBillingClient {
             state.serverResult = CheckPurchaseResult.notPurchased();
         }
 
-        if (amazonPurchases != null || !hasAmazon) {
+        if (amazonPurchases != null) {
             state.refreshedAmazon = true;
             state.amazonResult = checkAmazon(productId);
             handler.post(reportPurchase);
@@ -1051,7 +1054,7 @@ public class ClockworkModBillingClient {
                     handler.post(reportPurchase);
                 }
             };
-            PurchasingManager.initiatePurchaseUpdatesRequest(Offset.BEGINNING);
+            PurchasingService.getPurchaseUpdates(true);
         }
 
         if (syncResult != null)

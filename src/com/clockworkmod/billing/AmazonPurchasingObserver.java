@@ -2,26 +2,34 @@ package com.clockworkmod.billing;
 
 import android.content.Context;
 
-import com.amazon.inapp.purchasing.BasePurchasingObserver;
-import com.amazon.inapp.purchasing.Offset;
+import com.amazon.device.iap.PurchasingListener;
+import com.amazon.device.iap.model.ProductDataResponse;
+import com.amazon.device.iap.model.PurchaseResponse;
+import com.amazon.device.iap.model.PurchaseUpdatesResponse;
+import com.amazon.device.iap.model.UserDataResponse;
 
-public class AmazonPurchasingObserver extends BasePurchasingObserver {
+public class AmazonPurchasingObserver implements PurchasingListener {
     private static final String TAG = "AmazonPurchasingObserver";
-    Offset persistedOffset;
-
     public AmazonPurchasingObserver(Context context) {
-        super(context);
-
-        String offset = context.getSharedPreferences("amazon", Context.MODE_PRIVATE)
-        .getString("persistedOffset", null);
-
-        if (offset != null)
-            persistedOffset = Offset.fromString(offset);
-        else
-            persistedOffset = Offset.BEGINNING;
     }
 
-    Offset getPersistedOffset() {
-        return persistedOffset;
+    @Override
+    public void onUserDataResponse(UserDataResponse userDataResponse) {
+
+    }
+
+    @Override
+    public void onProductDataResponse(ProductDataResponse productDataResponse) {
+
+    }
+
+    @Override
+    public void onPurchaseResponse(PurchaseResponse purchaseResponse) {
+
+    }
+
+    @Override
+    public void onPurchaseUpdatesResponse(PurchaseUpdatesResponse purchaseUpdatesResponse) {
+
     }
 }
