@@ -6,12 +6,12 @@
     <uses-sdk android:minSdkVersion="8" android:targetSdkVersion="21" />
 
     <application>
-        <receiver android:name = "com.amazon.device.iap.ResponseReceiver" >
-            <intent-filter>
-                <action android:name = "com.amazon.inapp.purchasing.NOTIFY"
-                        android:permission = "com.amazon.inapp.purchasing.Permission.NOTIFY" />
-            </intent-filter>
-        </receiver>
+        <!--<receiver android:name = "com.amazon.device.iap.ResponseReceiver" >-->
+            <!--<intent-filter>-->
+                <!--<action android:name = "com.amazon.inapp.purchasing.NOTIFY"-->
+                        <!--android:permission = "com.amazon.inapp.purchasing.Permission.NOTIFY" />-->
+            <!--</intent-filter>-->
+        <!--</receiver>-->
 
     </application>
 </manifest>

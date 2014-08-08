@@ -29,6 +29,7 @@ import android.util.Log;
 import android.widget.EditText;
 
 import com.amazon.device.iap.PurchasingService;
+import com.amazon.device.iap.model.FulfillmentResult;
 import com.amazon.device.iap.model.PurchaseResponse;
 import com.amazon.device.iap.model.PurchaseUpdatesResponse;
 import com.amazon.device.iap.model.Receipt;
@@ -93,7 +94,7 @@ public class ClockworkModBillingClient {
     String amazonUserId;
     PurchaseCallback amazonPurchaseCallback;
     Runnable amazonCheckPurchaseCallback;
-    PurchaseUpdatesResponse amazonPurchases;
+    AmazonPurchasingObserver amazonPurchasingObserver;
 
     boolean mSandbox = true;
     public static ClockworkModBillingClient init(Context context, String sellerId, String clockworkPublicKey, String marketPublicKey, boolean sandbox) {
@@ -102,8 +103,16 @@ public class ClockworkModBillingClient {
             //    throw new Exception("ClockworkModBillingClient has already been initialized for a different environment.");
             return mInstance;
         }
+
+        BroadcastReceiver receiver = new com.amazon.device.iap.ResponseReceiver();
+        IntentFilter filter = new IntentFilter("com.amazon.inapp.purchasing.NOTIFY");
+        String amazonPermission = "com.amazon.inapp.purchasing.Permission.NOTIFY";
+//        if (PurchasingService.IS_SANDBOX_MODE)
+            amazonPermission = null;
+        context.registerReceiver(receiver, filter, amazonPermission, null);
+
         mInstance = new ClockworkModBillingClient(context, sellerId, clockworkPublicKey, marketPublicKey, sandbox);
-        final AmazonPurchasingObserver amazonPurchasingObserver = new AmazonPurchasingObserver(context) {
+        mInstance.amazonPurchasingObserver = new AmazonPurchasingObserver(context) {
             @Override
             public void onUserDataResponse(UserDataResponse userDataResponse) {
                 super.onUserDataResponse(userDataResponse);
@@ -124,6 +133,11 @@ public class ClockworkModBillingClient {
                     }
                     return;
                 }
+                mInstance.getKiwiData()
+                .edit()
+                .putString(purchaseResponse.getReceipt().getSku(), purchaseResponse.getReceipt().getReceiptId())
+                .commit();
+                PurchasingService.notifyFulfillment(purchaseResponse.getReceipt().getReceiptId(), FulfillmentResult.FULFILLED);
                 Log.i(LOGTAG, "Purchase success: " + purchaseResponse.getRequestStatus());
                 if (mInstance.mIsAmazonSandbox == null || mInstance.mIsAmazonSandbox != mInstance.mSandbox) {
                     Log.i(LOGTAG, "Purchase Sandbox mismatch");
@@ -149,7 +163,14 @@ public class ClockworkModBillingClient {
                     Log.i(LOGTAG, "Purchase Updates Sandbox mismatch");
                     return;
                 }
-                mInstance.amazonPurchases = purchaseUpdatesResponse;
+
+                for (Receipt receipt: purchaseUpdatesResponse.getReceipts()) {
+                    mInstance.getKiwiData()
+                    .edit()
+                    .putString(receipt.getSku(), receipt.getReceiptId())
+                    .commit();
+                }
+
                 if (mInstance.amazonCheckPurchaseCallback != null) {
                     Log.i(LOGTAG, "Invoking purchase updates callback");
                     mInstance.amazonCheckPurchaseCallback.run();
@@ -158,7 +179,7 @@ public class ClockworkModBillingClient {
             }
         };
 
-        PurchasingService.registerListener(context, amazonPurchasingObserver);
+        PurchasingService.registerListener(context, mInstance.amazonPurchasingObserver);
         mInstance.mIsAmazonSandbox = PurchasingService.IS_SANDBOX_MODE;
         PurchasingService.getUserData();
         PurchasingService.getPurchaseUpdates(true);
@@ -531,6 +552,10 @@ public class ClockworkModBillingClient {
         builder.create().show();
     }
 
+    SharedPreferences getKiwiData() {
+        return mContext.getApplicationContext().getSharedPreferences("kiwi-data", Context.MODE_PRIVATE);
+    }
+
     SharedPreferences getCachedSettings() {
         return mContext.getApplicationContext().getSharedPreferences("billing-settings", Context.MODE_PRIVATE);
     }
@@ -705,7 +730,7 @@ public class ClockworkModBillingClient {
         
     private CheckPurchaseResult[] checkCachedPurchases(Context context, String productId, String buyerId, long marketCacheDuration, long billingCacheDuration, SharedPreferences orderData) {
         Editor edit = orderData.edit();
-        CheckPurchaseResult[] result = new CheckPurchaseResult[3];
+        CheckPurchaseResult[] result = new CheckPurchaseResult[4];
         // check the in app billing cache
         if (0 != marketCacheDuration) {
             if (!mSandbox) {
@@ -811,7 +836,14 @@ public class ClockworkModBillingClient {
         else {
             result[2] = CheckPurchaseResult.stale();
         }
-        
+
+        result[3] = checkAmazon(productId);
+        if (result[3].isPurchased()) {
+            Log.i(LOGTAG, "Cached amazon success");
+            result[0] = result[3];
+            return result;
+        }
+
         if (result[1] == CheckPurchaseResult.notPurchased() && result[2] == CheckPurchaseResult.notPurchased())
             result[0] = CheckPurchaseResult.notPurchased();
         else
@@ -828,7 +860,7 @@ public class ClockworkModBillingClient {
         public CheckPurchaseResult amazonResult = CheckPurchaseResult.error();
         public boolean reportedPurchase = false;
     }
-    
+
     private static final String LOGTAG = "ClockworkModBilling";
     
     public void updateTrial(final Context context, final String productId, String _buyerId, final int trialIncrement, final int trialDailyIncrement, final UpdateTrialCallback callback) {
@@ -863,12 +895,9 @@ public class ClockworkModBillingClient {
     }
 
     public CheckPurchaseResult checkAmazon(String productId) {
-        if (amazonPurchases != null && amazonPurchases.getReceipts() != null) {
-            for (Receipt receipt: amazonPurchases.getReceipts()) {
-                if (receipt.getSku().equals(productId)) {
-                    return CheckPurchaseResult.purchased(null);
-                }
-            }
+        if (getKiwiData().contains(productId)) {
+            Log.i(LOGTAG, "Cached amazon success");
+            return CheckPurchaseResult.purchased(null);
         }
         return CheckPurchaseResult.notPurchased();
     }
@@ -929,16 +958,20 @@ public class ClockworkModBillingClient {
             });
             Log.i(LOGTAG, "CheckPurchase result: " + syncResult.toString());
             state.reportedPurchase = true;
-            long til = syncResult.getOrder().getTimestamp() - System.currentTimeMillis();
             if (syncResult.getOrder() instanceof ClockworkOrder) {
+                long til = syncResult.getOrder().getTimestamp() - System.currentTimeMillis();
                 til += billingCacheDuration;
                 if (billingCacheDuration / 3 < til || billingCacheDuration == CACHE_DURATION_FOREVER)
                     return syncResult;
             }
-            else {
+            else if (syncResult.getOrder() instanceof InAppOrder) {
+                long til = syncResult.getOrder().getTimestamp() - System.currentTimeMillis();
                 til += marketCacheDuration;
                 if (marketCacheDuration / 3 < til || marketCacheDuration == CACHE_DURATION_FOREVER)
                     return syncResult;
+            }
+            else {
+                return syncResult;
             }
         }
 
@@ -1040,12 +1073,7 @@ public class ClockworkModBillingClient {
             state.serverResult = CheckPurchaseResult.notPurchased();
         }
 
-        if (amazonPurchases != null) {
-            state.refreshedAmazon = true;
-            state.amazonResult = checkAmazon(productId);
-            handler.post(reportPurchase);
-        }
-        else {
+        {
             amazonCheckPurchaseCallback = new Runnable() {
                 @Override
                 public void run() {
