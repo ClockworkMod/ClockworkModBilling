@@ -1,15 +1,12 @@
-task wrapper(type: Wrapper) {
-    gradleVersion = '1.6'
-}
-
 buildscript {
     repositories {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:0.12.+'
+        classpath 'com.android.tools.build:gradle:0.14.1'
     }
 }
+
 apply plugin: 'com.android.library'
 
 repositories {
@@ -17,7 +14,7 @@ repositories {
 }
 
 dependencies {
-    compile files('libs/in-app-purchasing-2.0.0.jar')
+    compile files('libs/in-app-purchasing-2.0.1.jar')
     compile files('libs/PayPal_MPL.jar')
 }
 
@@ -31,8 +28,8 @@ android {
         }
     }
 
-    compileSdkVersion "android-L"
-    buildToolsVersion "20.0.0"
+    compileSdkVersion 21
+    buildToolsVersion "21.1.0"
 
     defaultConfig {
         minSdkVersion 14

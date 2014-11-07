@@ -109,7 +109,7 @@ public class BillingService extends Service {
                 Log.i(LOGTAG, signature);
 
             Log.i(LOGTAG, "Connecting to Market Service to acknowledge transactions.");
-            bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
+            bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND").setPackage("com.android.vending"), new ServiceConnection() {
                 @Override
                 public void onServiceDisconnected(ComponentName name) {
                 }

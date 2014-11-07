@@ -179,10 +179,14 @@ public class ClockworkModBillingClient {
             }
         };
 
-        PurchasingService.registerListener(context, mInstance.amazonPurchasingObserver);
-        mInstance.mIsAmazonSandbox = PurchasingService.IS_SANDBOX_MODE;
-        PurchasingService.getUserData();
-        PurchasingService.getPurchaseUpdates(true);
+        try {
+            PurchasingService.registerListener(context, mInstance.amazonPurchasingObserver);
+            mInstance.mIsAmazonSandbox = PurchasingService.IS_SANDBOX_MODE;
+            PurchasingService.getUserData();
+            PurchasingService.getPurchaseUpdates(true);
+        }
+        catch (Exception e) {
+        }
         return mInstance;
     }
 
@@ -844,7 +848,7 @@ public class ClockworkModBillingClient {
             return result;
         }
 
-        if (result[1] == CheckPurchaseResult.notPurchased() && result[2] == CheckPurchaseResult.notPurchased())
+        if (result[1] == CheckPurchaseResult.notPurchased() && result[2] == CheckPurchaseResult.notPurchased() && result[3] == CheckPurchaseResult.notPurchased())
             result[0] = CheckPurchaseResult.notPurchased();
         else
             result[0] = CheckPurchaseResult.stale();
@@ -1073,7 +1077,7 @@ public class ClockworkModBillingClient {
             state.serverResult = CheckPurchaseResult.notPurchased();
         }
 
-        {
+        try {
             amazonCheckPurchaseCallback = new Runnable() {
                 @Override
                 public void run() {
@@ -1083,6 +1087,8 @@ public class ClockworkModBillingClient {
                 }
             };
             PurchasingService.getPurchaseUpdates(true);
+        }
+        catch (Throwable error) {
         }
 
         if (syncResult != null)
