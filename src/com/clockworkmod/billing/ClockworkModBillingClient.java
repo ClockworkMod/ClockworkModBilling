@@ -179,14 +179,11 @@ public class ClockworkModBillingClient {
             }
         };
 
-        try {
-            PurchasingService.registerListener(context, mInstance.amazonPurchasingObserver);
-            mInstance.mIsAmazonSandbox = PurchasingService.IS_SANDBOX_MODE;
-            PurchasingService.getUserData();
-            PurchasingService.getPurchaseUpdates(true);
-        }
-        catch (Exception e) {
-        }
+        PurchasingService.registerListener(context, mInstance.amazonPurchasingObserver);
+        mInstance.mIsAmazonSandbox = PurchasingService.IS_SANDBOX_MODE;
+        PurchasingService.getUserData();
+        PurchasingService.getPurchaseUpdates(true);
+
         return mInstance;
     }
 
