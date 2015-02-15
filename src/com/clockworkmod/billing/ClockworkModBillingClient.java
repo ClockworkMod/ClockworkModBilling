@@ -3,6 +3,7 @@ package com.clockworkmod.billing;
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.PendingIntent;
@@ -34,7 +35,7 @@ import com.amazon.device.iap.model.PurchaseResponse;
 import com.amazon.device.iap.model.PurchaseUpdatesResponse;
 import com.amazon.device.iap.model.Receipt;
 import com.amazon.device.iap.model.UserDataResponse;
-import com.android.vending.billing.IMarketBillingService;
+import com.android.vending.billing.IInAppBillingService;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
 import com.paypal.android.MEP.PayPalInvoiceItem;
@@ -363,6 +364,8 @@ public class ClockworkModBillingClient {
         startInAppPurchaseInternal(context, productId, developerPayload, null, null, callback);
     }
 
+    public static final int REQUEST_ID = 39595;
+    public static final String BILLING_RESULT = "com.clockworkmod.billing.BILLING_RESULT";
     private static void startInAppPurchaseInternal(final Context context, final String productId, final String developerPayload, final String buyerId, final String purchaseRequestId, final PurchaseCallback callback) {
         new Runnable() {
             String mProductId = productId;
@@ -373,28 +376,25 @@ public class ClockworkModBillingClient {
                 final Runnable purchaseFlow = new Runnable() {
                     @Override
                     public void run() {
-                        context.bindService(new Intent("com.android.vending.billing.MarketBillingService.BIND"), new ServiceConnection() {
+                        Intent serviceIntent = new Intent("com.android.vending.billing.InAppBillingService.BIND");
+                        serviceIntent.setPackage("com.android.vending");
+                        context.bindService(serviceIntent, new ServiceConnection() {
                             @Override
                             public void onServiceDisconnected(ComponentName name) {
                             }
                             
                             @Override
                             public void onServiceConnected(ComponentName name, IBinder service) {
-                                Bundle request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_CHECK_BILLING_SUPPORTED);
-                                final IMarketBillingService s = IMarketBillingService.Stub.asInterface(service);
+                                final IInAppBillingService s = IInAppBillingService.Stub.asInterface(service);
+
                                 try {
-                                    Bundle result = s.sendBillingRequest(request);
-                                    if (Consts.ResponseCode.valueOf(result.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
-                                        throw new Exception("billing response not ok");
-                                    request = BillingReceiver.makeRequestBundle(context, Consts.METHOD_REQUEST_PURCHASE);
-                                    request.putString(Consts.BILLING_REQUEST_ITEM_ID, mProductId);
-                                    if (developerPayload != null)
-                                        request.putString(Consts.BILLING_REQUEST_DEVELOPER_PAYLOAD, developerPayload);
-                                    Bundle response = s.sendBillingRequest(request);
-                                    if (Consts.ResponseCode.valueOf(response.getInt(Consts.BILLING_RESPONSE_RESPONSE_CODE)) != Consts.ResponseCode.RESULT_OK)
-                                        throw new Exception("billing response not ok");
-                                    PendingIntent pi = response.getParcelable(Consts.BILLING_RESPONSE_PURCHASE_INTENT);
-                                    context.startIntentSender(pi.getIntentSender(), null, 0, 0, 0);
+                                    if (mProductId.startsWith("android.test"))
+                                        s.consumePurchase(3, context.getPackageName(), "inapp:" + context.getPackageName() + ":" + mProductId);
+
+                                    Bundle buyIntentBundle = s.getBuyIntent(3, context.getPackageName(), mProductId, "inapp", developerPayload);
+                                    PendingIntent pendingIntent = buyIntentBundle.getParcelable("BUY_INTENT");
+
+                                    ((Activity)context).startIntentSenderForResult(pendingIntent.getIntentSender(), REQUEST_ID, new Intent(), 0, 0, 0);
                                     context.unbindService(this);
                                     
                                     BroadcastReceiver receiver = new BroadcastReceiver() {
@@ -406,14 +406,22 @@ public class ClockworkModBillingClient {
                                             catch (Exception ex) {
                                             }
 
+                                            int responseCode = intent.getIntExtra("RESPONSE_CODE", 0);
+                                            String purchaseData = intent.getStringExtra("INAPP_PURCHASE_DATA");
+                                            String dataSignature = intent.getStringExtra("INAPP_DATA_SIGNATURE");
+
                                             PurchaseResult result;
-                                            if (BillingReceiver.CANCELLED.equals(intent.getAction())) {
-                                                result = PurchaseResult.CANCELLED;
-                                            }
-                                            else if (BillingReceiver.SUCCEEDED.equals(intent.getAction())) {
+                                            try {
+                                                JSONObject jo = new JSONObject(purchaseData);
+                                                try {
+                                                    BillingService.reportAndroidPurchase(context, purchaseData, dataSignature);
+                                                }
+                                                catch (Exception e) {
+                                                    e.printStackTrace();
+                                                }
                                                 result = PurchaseResult.SUCCEEDED;
                                             }
-                                            else {
+                                            catch (Exception e) {
                                                 result = PurchaseResult.FAILED;
                                             }
                                             invokeCallback(context, callback, result);
@@ -421,10 +429,8 @@ public class ClockworkModBillingClient {
                                     };
                                     
                                     IntentFilter filter = new IntentFilter();
-                                    filter.addAction(BillingReceiver.SUCCEEDED);
-                                    filter.addAction(BillingReceiver.CANCELLED);
-                                    filter.addAction(BillingReceiver.FAILED);
-                                    
+                                    filter.addAction(BILLING_RESULT);
+
                                     context.registerReceiver(receiver, filter);
                                 }
                                 catch (Exception e) {
@@ -444,7 +450,7 @@ public class ClockworkModBillingClient {
                     purchaseFlow.run();
                     return;
                 }
-                
+
                 AlertDialog.Builder builder = new Builder(context);
                 builder.setTitle("Sandbox Purchase");
                 final String[] results = new String[] { "android.test.purchased", "android.test.canceled", "android.test.refunded", "android.test.item_unavailable" };
@@ -754,7 +760,14 @@ public class ClockworkModBillingClient {
                         String signedData = proof.getString("signedData");
                         String signature = proof.getString("signature");
                         proof = new JSONObject(signedData);
-                        JSONArray orders = proof.getJSONArray("orders");
+                        JSONArray orders = proof.optJSONArray("orders");
+                        boolean checkNonce = true;
+                        if (orders == null) {
+                            checkNonce = false;
+                            JSONObject order = new JSONObject(signedData);
+                            orders = new JSONArray();
+                            orders.put(order);
+                        }
                         for (int i = 0; i < orders.length(); i++) {
                             JSONObject order = orders.getJSONObject(i);
                             if (productId.equals(order.getString("productId")) && context.getPackageName().equals(order.optString("packageName", null))) {
@@ -762,11 +775,14 @@ public class ClockworkModBillingClient {
                                 found = true;
                                 if (!checkSignature(mMarketPublicKey, signedData, signature))
                                     throw new Exception("signature mismatch");
-                                // the nonce check also checks against the device id.
-                                long nonce = proof.getLong("nonce");
-                                if (!checkNonce(context, nonce, marketCacheDuration))
-                                    throw new Exception("nonce failure");
-                                long timestamp = getTimestampFromNonce(nonce);
+                                long timestamp = System.currentTimeMillis();
+                                if (checkNonce) {
+                                    // the nonce check also checks against the device id.
+                                    long nonce = proof.getLong("nonce");
+                                    if (!checkNonce(context, nonce, marketCacheDuration))
+                                        throw new Exception("nonce failure");
+                                    timestamp = getTimestampFromNonce(nonce);
+                                }
                                 Log.i(LOGTAG, "Cached in app billing success");
                                 result[0] = result[1] = CheckPurchaseResult.purchased(new InAppOrder(order, timestamp));
                                 return result;
