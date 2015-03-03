@@ -125,6 +125,10 @@ public class ClockworkModBillingClient {
             @Override
             public void onPurchaseResponse(PurchaseResponse purchaseResponse) {
                 super.onPurchaseResponse(purchaseResponse);
+                if (purchaseResponse == null)
+                    return;
+                if (purchaseResponse.getReceipt() != null && purchaseResponse.getReceipt().getReceiptId() != null)
+                    PurchasingService.notifyFulfillment(purchaseResponse.getReceipt().getReceiptId(), FulfillmentResult.FULFILLED);
                 if (purchaseResponse.getRequestStatus() != PurchaseResponse.RequestStatus.SUCCESSFUL
                 && purchaseResponse.getRequestStatus() != PurchaseResponse.RequestStatus.ALREADY_PURCHASED) {
                     Log.i(LOGTAG, "Purchase failure: " + purchaseResponse.getRequestStatus());
@@ -138,7 +142,6 @@ public class ClockworkModBillingClient {
                 .edit()
                 .putString(purchaseResponse.getReceipt().getSku(), purchaseResponse.getReceipt().getReceiptId())
                 .commit();
-                PurchasingService.notifyFulfillment(purchaseResponse.getReceipt().getReceiptId(), FulfillmentResult.FULFILLED);
                 Log.i(LOGTAG, "Purchase success: " + purchaseResponse.getRequestStatus());
                 if (mInstance.mIsAmazonSandbox == null || mInstance.mIsAmazonSandbox != mInstance.mSandbox) {
                     Log.i(LOGTAG, "Purchase Sandbox mismatch");
