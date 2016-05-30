@@ -616,22 +616,24 @@ public class ClockworkModBillingClient {
         long nonce = ((bigint.longValue() & 0xFFFFFFFF00000000L)) | nonceDate;
         return nonce;
     }
-    
+
+    private static final String NO_ID = "000000000000";
     @SuppressLint("NewApi")
     public static String getSafeDeviceId(Context context) {
         TelephonyManager tm = (TelephonyManager)context.getSystemService(Context.TELEPHONY_SERVICE);
-        String deviceId = tm.getDeviceId();
-        if (deviceId == null) {
-            String wifiInterface = SystemProperties.get("wifi.interface");
-            try {
+        String deviceId;
+        try {
+            deviceId = tm.getDeviceId();
+            if (deviceId == null) {
+                String wifiInterface = SystemProperties.get("wifi.interface");
                 if (Build.VERSION.SDK_INT < 9)
                     throw new Exception();
                 String wifiMac = new BigInteger(NetworkInterface.getByName(wifiInterface).getHardwareAddress()).toString(16);
                 deviceId = wifiMac;
             }
-            catch (Exception e) {
-                deviceId = "000000000000";
-            }
+        }
+        catch (Exception e) {
+            deviceId = NO_ID;
         }
         String ret = digest(deviceId + context.getPackageName());
         return ret;
@@ -649,6 +651,10 @@ public class ClockworkModBillingClient {
 
     private static boolean checkNonce(Context context, long nonce, long cacheDuration) {
         String deviceId = getSafeDeviceId(context);
+        if (deviceId == NO_ID) {
+            Log.w(LOGTAG, "Invalid buyer id during nonce check");
+            return false;
+        }
         byte[] bytes = deviceId.getBytes();
         BigInteger bigint = new BigInteger(bytes);
         long deviceNonce = bigint.longValue() & 0xFFFFFFFF00000000L;
@@ -838,6 +844,8 @@ public class ClockworkModBillingClient {
                     throw new Exception("cache expired");
                 if (!buyerId.equals(proof.getString("buyer_id")))
                     throw new Exception("buyer_id mismatch");
+                if (buyerId == NO_ID)
+                    throw new Exception("Invalid buyer id during checkCachedPurchases");
                 JSONArray orders = proof.getJSONArray("orders");
                 for (int i = 0; i < orders.length(); i++) {
                     JSONObject order = orders.getJSONObject(i);
@@ -1051,6 +1059,8 @@ public class ClockworkModBillingClient {
                 @Override
                 public void run() {
                     try {
+                        if (buyerId == NO_ID)
+                            throw new Exception("Invalid buyer id during check server purhcases");
                         String purchaseUrl = String.format(PURCHASE_URL, mSellerId, buyerId, generateNonce(context), mSandbox);
                         HttpGet get = new HttpGet(purchaseUrl);
                         
@@ -1278,6 +1288,8 @@ public class ClockworkModBillingClient {
                                     startAndroidPurchase(context, buyerId, callback, payload);
                                 }
                                 else if (type == PurchaseType.REDEEM) {
+                                    if (buyerId == NO_ID && buyerEmail == null)
+                                        throw new Exception("Invalud buyer id during redeem code");
                                     startRedeemCode(context, buyerId, callback, payload);
                                 }
                                 else {
