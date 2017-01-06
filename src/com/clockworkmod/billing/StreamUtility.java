@@ -1,10 +1,5 @@
 package com.clockworkmod.billing;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -17,6 +12,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
@@ -64,23 +61,20 @@ class StreamUtility {
 	}
     
     public static String downloadUriAsString(String uri) throws IOException {
-        HttpGet get = new HttpGet(uri);
-        return downloadUriAsString(get);
+        return downloadUriAsString(new URL(uri).openConnection());
     }
 
     
-    public static String downloadUriAsString(final HttpUriRequest req) throws IOException {
-        HttpClient client = new DefaultHttpClient();
-        HttpResponse res = client.execute(req);
-        return readToEnd(res.getEntity().getContent());
+    public static String downloadUriAsString(final URLConnection conn) throws IOException {
+        return readToEnd(conn.getInputStream());
     }
 
     public static JSONObject downloadUriAsJSONObject(String uri) throws IOException, JSONException {
         return new JSONObject(downloadUriAsString(uri));
     }
 
-    public static JSONObject downloadUriAsJSONObject(HttpUriRequest req) throws IOException, JSONException {
-        return new JSONObject(downloadUriAsString(req));
+    public static JSONObject downloadUriAsJSONObject(final URLConnection conn) throws IOException, JSONException {
+        return new JSONObject(downloadUriAsString(conn));
     }
 
     public static byte[] readToEndAsArray(InputStream input) throws IOException

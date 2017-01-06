@@ -36,23 +36,13 @@ import com.amazon.device.iap.model.PurchaseUpdatesResponse;
 import com.amazon.device.iap.model.Receipt;
 import com.amazon.device.iap.model.UserDataResponse;
 import com.android.vending.billing.IInAppBillingService;
+import com.koushikdutta.async.http.Multimap;
+import com.koushikdutta.ion.Ion;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalInvoiceData;
 import com.paypal.android.MEP.PayPalInvoiceItem;
 import com.paypal.android.MEP.PayPalPayment;
 
-import org.apache.http.Header;
-import org.apache.http.HttpMessage;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.params.HttpClientParams;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.params.BasicHttpParams;
-import org.apache.http.params.HttpParams;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -60,9 +50,9 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.HttpURLConnection;
 import java.net.NetworkInterface;
-import java.net.URI;
-import java.net.URISyntaxException;
+import java.net.URL;
 import java.net.URLEncoder;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -502,14 +492,18 @@ public class ClockworkModBillingClient {
                     @Override
                     public void run() {
                         try {
-                            HttpPost post = new HttpPost(String.format(REDEEM_NOTIFY_URL, sellerId));
-                            ArrayList<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
-                            params.add(new BasicNameValuePair("product_id", productId));
-                            params.add(new BasicNameValuePair("purchase_request_id", purchaseRequestId));
-                            params.add(new BasicNameValuePair("code", code));
-                            params.add(new BasicNameValuePair("sandbox", String.valueOf(mSandbox)));
-                            post.setEntity(new UrlEncodedFormEntity(params));
-                            final JSONObject redeemResult = StreamUtility.downloadUriAsJSONObject(post);
+                            Multimap params = new Multimap();
+                            params.add("product_id", productId);
+                            params.add("purchase_request_id", purchaseRequestId);
+                            params.add("code", code);
+                            params.add("sandbox", String.valueOf(mSandbox));
+
+                            final JSONObject redeemResult = new JSONObject(Ion.with(context)
+                                    .load(String.format(REDEEM_NOTIFY_URL, sellerId))
+                                    .setBodyParameters(params)
+                                    .asString()
+                                    .get());
+
                             if (redeemResult.optBoolean("success", false)) {
                                 foreground(new Runnable() {
                                     @Override
@@ -1062,8 +1056,8 @@ public class ClockworkModBillingClient {
                         if (buyerId == NO_ID)
                             throw new Exception("Invalid buyer id during check server purhcases");
                         String purchaseUrl = String.format(PURCHASE_URL, mSellerId, buyerId, generateNonce(context), mSandbox);
-                        HttpGet get = new HttpGet(purchaseUrl);
-                        
+                        HttpURLConnection get = (HttpURLConnection)(new URL(purchaseUrl).openConnection());
+
                         if (authToken != null) {
                             try {
                                 String cookie = getCookie(authToken);
@@ -1433,42 +1427,37 @@ public class ClockworkModBillingClient {
         builder.create().show();
     }
 
-    static void addAuthentication(HttpMessage message, String ascidCookie) {
-        message.setHeader("Cookie", ascidCookie);
-        message.setHeader("X-Same-Domain", "1"); // XSRF
+    static void addAuthentication(HttpURLConnection message, String ascidCookie) {
+        message.setRequestProperty("Cookie", ascidCookie);
+        message.setRequestProperty("X-Same-Domain", "1"); // XSRF
     }
 
-    static String getCookie(final String authToken) throws ClientProtocolException, IOException, URISyntaxException {
+    static String getCookie(final String authToken) throws IOException {
         if (authToken == null)
             return null;
         Log.i(LOGTAG, authToken);
         Log.i(LOGTAG, "getting cookie");
         // Get ACSID cookie
-        DefaultHttpClient client = new DefaultHttpClient();
-        URI uri = new URI("https://clockworkbilling.appspot.com/_ah/login?continue=" + URLEncoder.encode("http://localhost", "UTF-8") + "&auth=" + authToken);
-        HttpGet method = new HttpGet(uri);
-        final HttpParams getParams = new BasicHttpParams();
-        HttpClientParams.setRedirecting(getParams, false); // continue is not
-                                                           // used
-        method.setParams(getParams);
+        URL uri = new URL("https://clockworkbilling.appspot.com/_ah/login?continue=" + URLEncoder.encode("http://localhost", "UTF-8") + "&auth=" + authToken);
+        HttpURLConnection method = (HttpURLConnection)uri.openConnection();
+        method.setInstanceFollowRedirects(false);
 
-        HttpResponse res = client.execute(method);
-        Header[] headers = res.getHeaders("Set-Cookie");
-        if (res.getStatusLine().getStatusCode() != 302 || headers.length == 0) {
+        List<String> headers = method.getHeaderFields().get("Set-Cookie");
+
+
+        if (method.getResponseCode() != 302 || headers == null || headers.size() == 0) {
             //throw new Exception("failure getting cookie: " + res.getStatusLine().getStatusCode() + " " + res.getStatusLine().getReasonPhrase());
             return null;
         }
 
         String ascidCookie = null;
-        for (Header header : headers) {
-            if (header.getValue().indexOf("ACSID=") >= 0) {
+        for (String header : headers) {
+            if (header.indexOf("ACSID=") >= 0) {
                 // let's parse it
-                String value = header.getValue();
-                String[] pairs = value.split(";");
+                String[] pairs = header.split(";");
                 ascidCookie = pairs[0];
             }
         }
         return ascidCookie;
     }
-
 }

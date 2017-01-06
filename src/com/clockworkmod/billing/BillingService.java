@@ -11,10 +11,9 @@ import android.os.IBinder;
 import android.util.Log;
 
 import com.android.vending.billing.IInAppBillingService;
+import com.koushikdutta.async.http.Multimap;
+import com.koushikdutta.ion.Ion;
 
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.message.BasicNameValuePair;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -34,19 +33,23 @@ public class BillingService extends Service {
     private static final String LOGTAG = "ClockworkBilling";
     static void reportAndroidPurchase(final Context context, final String signedData, final String signature) throws Exception {
         Log.i(LOGTAG, "Reporting in app purchases...");
-        HttpPost post = new HttpPost(String.format(ClockworkModBillingClient.INAPP_NOTIFY_URL, ClockworkModBillingClient.mInstance.mSellerId));
-        ArrayList<BasicNameValuePair> pairs = new ArrayList<BasicNameValuePair>();
-        pairs.add(new BasicNameValuePair("signed_data", signedData));
-        pairs.add(new BasicNameValuePair("signature", signature));
+
+        Multimap args = new Multimap();
+        args.put("signed_data", signedData);
+        args.put("signature", signature);
         if (mSandboxPurchaseRequestId != null)
-            pairs.add(new BasicNameValuePair("sandbox_purchase_request_id", mSandboxPurchaseRequestId));
+            args.put("sandbox_purchase_request_id", mSandboxPurchaseRequestId);
         if (mSandboxProductId != null)
-            pairs.add(new BasicNameValuePair("sandbox_product_id", mSandboxProductId));
+            args.put("sandbox_product_id", mSandboxProductId);
         if (mSandboxBuyerId != null)
-            pairs.add(new BasicNameValuePair("sandbox_buyer_id", mSandboxBuyerId));
-        UrlEncodedFormEntity entity = new UrlEncodedFormEntity(pairs);
-        post.setEntity(entity);
-        String result = StreamUtility.downloadUriAsString(post);
+            args.put("sandbox_buyer_id", mSandboxBuyerId);
+
+        String result = Ion.with(context)
+                .load(ClockworkModBillingClient.INAPP_NOTIFY_URL)
+                .setBodyParameters(args)
+                .asString()
+                .get();
+
         Log.i(LOGTAG, result);
     }
 

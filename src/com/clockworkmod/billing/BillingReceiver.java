@@ -16,14 +16,12 @@
 
 package com.clockworkmod.billing;
 
-import java.util.UUID;
-
-import org.apache.http.client.ResponseHandler;
-
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+
+import java.util.UUID;
 
 
 /**
