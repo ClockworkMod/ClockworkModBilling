@@ -1,9 +1,9 @@
 apply plugin: 'com.android.library'
 
 dependencies {
-    compile project(":ion:ion")
-    compile files('libs/in-app-purchasing-2.0.61.jar')
-    compile files('libs/PayPal_MPL.jar')
+    api project(":ion:ion")
+    api files('libs/in-app-purchasing-2.0.61.jar')
+    api files('libs/PayPal_MPL.jar')
 }
 
 android {
@@ -20,7 +20,7 @@ android {
     buildToolsVersion project.hasProperty('global_buildToolsVersion') ? global_buildToolsVersion : '25.0.2'
 
     defaultConfig {
-        minSdkVersion 9
+        minSdkVersion 14
         targetSdkVersion 22
     }
 }
