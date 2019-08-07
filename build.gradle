@@ -4,6 +4,7 @@ dependencies {
     api project(":ion:ion")
     api files('libs/in-app-purchasing-2.0.61.jar')
     api files('libs/PayPal_MPL.jar')
+    compileOnly 'com.android.support:support-v4:+'
 }
 
 android {
