@@ -64,6 +64,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
+import kotlin.NotImplementedError;
+
 public class ClockworkModBillingClient {
     static final String BASE_URL = "https://clockworkbilling.appspot.com";
     static final String API_URL = BASE_URL + "/api/v1";
@@ -498,41 +500,43 @@ public class ClockworkModBillingClient {
                             params.add("code", code);
                             params.add("sandbox", String.valueOf(mSandbox));
 
-                            final JSONObject redeemResult = new JSONObject(Ion.with(context)
-                                    .load(String.format(REDEEM_NOTIFY_URL, sellerId))
-                                    .setBodyParameters(params)
-                                    .asString()
-                                    .get());
+                            if (true) throw new NotImplementedError();
 
-                            if (redeemResult.optBoolean("success", false)) {
-                                foreground(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        invokeCallback(callback, PurchaseResult.SUCCEEDED);
-                                    }
-                                });
-                                return;
-                            }
-
-                            if (!redeemResult.optBoolean("is_redeemed", false)) {
-                                throw new Exception("already redeemed");
-                            }
-                            
-                            foreground(new Runnable() {
-                                @Override
-                                public void run() {
-                                    AlertDialog.Builder builder = new Builder(context);
-                                    builder.setMessage("This code has already been redeemed.");
-                                    builder.setPositiveButton(android.R.string.ok, new OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialog, int which) {
-                                            invokeCallback(callback, PurchaseResult.FAILED);
-                                        }
-                                    });
-                                    builder.create().show();
-                                    builder.setCancelable(false);
-                                }
-                            });
+//                            final JSONObject redeemResult = new JSONObject(Ion.with(context)
+//                                    .load(String.format(REDEEM_NOTIFY_URL, sellerId))
+//                                    .setBodyParameters(params)
+//                                    .asString()
+//                                    .get());
+//
+//                            if (redeemResult.optBoolean("success", false)) {
+//                                foreground(new Runnable() {
+//                                    @Override
+//                                    public void run() {
+//                                        invokeCallback(callback, PurchaseResult.SUCCEEDED);
+//                                    }
+//                                });
+//                                return;
+//                            }
+//
+//                            if (!redeemResult.optBoolean("is_redeemed", false)) {
+//                                throw new Exception("already redeemed");
+//                            }
+//
+//                            foreground(new Runnable() {
+//                                @Override
+//                                public void run() {
+//                                    AlertDialog.Builder builder = new Builder(context);
+//                                    builder.setMessage("This code has already been redeemed.");
+//                                    builder.setPositiveButton(android.R.string.ok, new OnClickListener() {
+//                                        @Override
+//                                        public void onClick(DialogInterface dialog, int which) {
+//                                            invokeCallback(callback, PurchaseResult.FAILED);
+//                                        }
+//                                    });
+//                                    builder.create().show();
+//                                    builder.setCancelable(false);
+//                                }
+//                            });
                         }
                         catch (Exception ex) {
                             ex.printStackTrace();

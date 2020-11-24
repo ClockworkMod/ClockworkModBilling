@@ -19,6 +19,8 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 
+import kotlin.NotImplementedError;
+
 public class BillingService extends Service {
     static String mSandboxPurchaseRequestId = null;
     static String mSandboxProductId = null;
@@ -44,13 +46,15 @@ public class BillingService extends Service {
         if (mSandboxBuyerId != null)
             args.put("sandbox_buyer_id", mSandboxBuyerId);
 
-        String result = Ion.with(context)
-                .load(ClockworkModBillingClient.INAPP_NOTIFY_URL)
-                .setBodyParameters(args)
-                .asString()
-                .get();
+        if (true) throw new NotImplementedError();
 
-        Log.i(LOGTAG, result);
+//        String result = Ion.with(context)
+//                .load(ClockworkModBillingClient.INAPP_NOTIFY_URL)
+//                .setBodyParameters(args)
+//                .asString()
+//                .get();
+
+//        Log.i(LOGTAG, result);
     }
 
     Handler mHandler = new Handler();

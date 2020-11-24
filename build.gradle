@@ -1,10 +1,15 @@
 apply plugin: 'com.android.library'
-
+repositories {
+    google()
+    jcenter()
+    mavenCentral()
+}
 dependencies {
+    api project(":AndroidAsync:AndroidAsync")
     api project(":ion:ion")
     api files('libs/in-app-purchasing-2.0.61.jar')
     api files('libs/PayPal_MPL.jar')
-    compileOnly 'com.android.support:support-v4:+'
+//    api 'com.android.support:support-v4:28.0.0'
 }
 
 android {
@@ -17,12 +22,12 @@ android {
         }
     }
 
-    compileSdkVersion project.hasProperty('global_compileSdkVersion') ? global_compileSdkVersion : 25
-    buildToolsVersion project.hasProperty('global_buildToolsVersion') ? global_buildToolsVersion : '25.0.2'
+    compileSdkVersion 30
+    buildToolsVersion '30.0.2'
 
     defaultConfig {
-        minSdkVersion 14
-        targetSdkVersion 22
+        minSdkVersion 21
+        targetSdkVersion 30
     }
 }
 
